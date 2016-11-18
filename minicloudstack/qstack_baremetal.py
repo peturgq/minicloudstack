@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+#
+# Copyright 2016 Greenqloud ehf
+#
+# tryggvi@greenqloud.com
+#
+# Baremetal utilities
+#
+
+import minicloudstack
+import argparse
+
+verbose = 0
+
+def add_baremetal_service_offering(cs, host):
+    service_offering = None
+    cpunumber = host.cpunumber
+    cpuspeed = host.cpuspeed
+    hosttags = host.hosttags
+    memory_b = int(host.memorytotal)
+    memory_mb = memory_b/(1024*1024)
+    memory_gb = round(float(memory_mb)/1024, 1)
+    if memory_gb == int(memory_gb):
+        memory_gb = int(memory_gb)
+    if memory_mb < 1024:
+        memory = "{0}m".format(memory_mb)
+    else:
+        memory = "{0}g".format(memory_gb)
+    so_name = "bm.{0}.{1}.{2}".format(cpunumber, cpuspeed, memory)
+    service_offering = minicloudstack.obj_if_exists(cs, "service offerings", name=so_name)
+    so_displaytext = "Baremetal {0} CPU {1} MHz {2} RAM".format(cpunumber, cpuspeed, memory)
+    if not service_offering:
+        service_offering = cs.obj(
+                "create service offering",
+                name=so_name,
+                displaytext=so_displaytext,
+                cpunumber=cpunumber,
+                cpuspeed=cpuspeed,
+                memory=memory_mb,
+                hosttags=hosttags
+        )
+
+
+def get_baremetal_basic_bootserver_username(arguments):
+    return "root"
+
+
+def get_baremetal_basic_bootserver_password(arguments):
+    baremetalpassword = arguments.baremetalpassword
+    if baremetalpassword:
+        return baremetalpassword
+    else:
+        config = StringIO.StringIO()
+        config.write('[dummysection]\n')
+        config.write(open('/etc/default/qstack-baremetal').read())
+        config.seek(0, os.SEEK_SET)
+        cp = ConfigParser.ConfigParser()
+        cp.readfp(config)
+        password = cp.get('dummysection', 'CONTAINER_PASSWORD')
+        password = password[1:-1]
+        return password
+
+
+def post_baremetal_basic_zone_update(cs, pu, pod, arguments):
+    baremetalip = arguments.baremetalip
+    url = "http://" + baremetalip + "/"
+    tftpdir = "/var/lib/tftpboot/"
+    username = get_baremetal_basic_bootserver_username(arguments)
+    password = get_baremetal_basic_bootserver_password(arguments)
+    cs.call("add baremetal dhcp",
+            physicalnetworkid=pu.id,
+            dhcpservertype="DHCPD",
+            username=username,
+            password=password,
+            url=url)
+
+    cs.call("add baremetal pxe kick start server",
+            physicalnetworkid=pu.id,
+            username=username,
+            password=password,
+            tftpdir=tftpdir,
+            url=url,
+            pxeservertype="KICK_START",
+            podid=pod.id)
+
+    cs.call("add baremetal basic pxe server",
+            physicalnetworkid=pu.id,
+            username=username,
+            password=password,
+            tftpdir=tftpdir,
+            url=url,
+            pxeservertype="BASIC_PXE",
+            podid=pod.id)
+
+
+def add_baremetal_advanced_switch(cs, ipaddress, username, password, switch_type):
+    switch = cs.obj("add baremetal switch",
+            ipaddress=ipaddress,
+            username=username,
+            password=password,
+            type=switch_type)
+    print "Baremetal switch added ({})".format(switch.id)
+    return switch
+
+
+def main():
+    global verbose
+
+    parser = argparse.ArgumentParser("Qstack Baremetal")
+    parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
+    minicloudstack.add_arguments(parser)
+
+    switch = parser.add_argument_group("Add Baremetal Advanced Switch", "Switch properties")
+    switch.add_argument("-as", "--addswitch", action="store_true",  help="Add Baremetal Advanced switch")
+    switch.add_argument("-sip", "--switchip", help="Switch ip")
+    switch.add_argument("-su", "--switchusername", help="Switch username")
+    switch.add_argument("-sp", "--switchpassword", help="Switch password")
+    switch.add_argument("-st", "--switchtype", default="DellS4810", help="Switch type")
+
+    arguments = parser.parse_args()
+
+    verbose = arguments.verbose
+    minicloudstack.set_verbosity(arguments.verbose)
+
+    try:
+        if arguments.addswitch:
+            cs = minicloudstack.MiniCloudStack(arguments)
+            add_baremetal_advanced_switch(cs, arguments.switchip, arguments.switchusername, arguments.switchpassword, arguments.switchtype)
+    except minicloudstack.MiniCloudStackException as e:
+        if verbose > 1:
+            raise e
+        else:
+            print " - - - "
+            print "Error:"
+            print e.message
+
+
+if __name__ == "__main__":
+    main()

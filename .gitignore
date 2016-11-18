@@ -1,0 +1,13 @@
+# python
+*.py?
+
+# python distribution
+*.egg-info/
+build/
+dist/
+
+# editor
+*.bak
+*.tmp
+idea/
+
