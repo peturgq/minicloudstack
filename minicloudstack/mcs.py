@@ -29,14 +29,18 @@ import time
 import requester
 
 DEFAULT_JOBID_WAIT_COUNT = 60    # 60 * 5s == 5 minutes
-verbose = 0
+VERBOSE = 0
 
 LIST_INDEX_RE = re.compile(r"(.+)\[(\d+)\]")
 
 
-def set_verbosity(verbosity):
-    global verbose
-    verbose = verbosity
+def set_verbosity(verbosity=0):
+    """
+    Increase verbosity of functions.
+    :param verbosity: 0=low, 1=details, 2=very verbose, 3=debug
+    """
+    global VERBOSE
+    VERBOSE = verbosity
 
 
 class MiniCloudStackException(Exception):
@@ -51,7 +55,11 @@ Configuration = collections.namedtuple(
 
 def get_env_defaults():
     """
-    Tries to read default configuration from environment.
+    Tries to read default configuration from the following environment variables:
+        CS_API_URL
+        CS_API_KEY
+        CS_SECRET_KEY
+        CS_SSL_NO_VERIFY (optional)
     :return: Configuration instance
     """
     return Configuration(
@@ -91,9 +99,13 @@ class MiniCloudStack(object):
         """
         Initialize connection to cloudstack.  See add_arguments for help adding those to your program.
         :param args: object with connection arguments (url, apikey, secretkey)
+                    if empty uses 'get_env_defaults()'
         """
         if not args:
             args = get_env_defaults()
+
+        if not len(args.url) or not len(args.apikey) or not len(args.secretkey):
+            raise MiniCloudStackException("Missing connection arguments (or environment variables)")
 
         self._creds = {
             "apikey": args.apikey,
@@ -125,9 +137,26 @@ class MiniCloudStack(object):
         if from_list:
             assert isinstance(value, list) and len(value) == 1
             value = value[0]
-        if verbose > 1:
+        if VERBOSE > 1:
             print("OBJ: {}={}".format(key, value))
         return MCSResult(value)
+
+    def list(self, object_type, **kwargs):
+        """
+        Call CoudStack list* API function
+        :param object_type: api object (e.g. 'clusters', 'image stores')
+        :param kwargs: additional api arguments
+        :return: python list object with results
+        """
+        items = []
+        result = self.call("list " + object_type, **kwargs)
+        if result:
+            lower_case = "".join(object_type.split()).lower()
+            singular = guess_singular(lower_case)
+            for item in peel(result, singular):
+                items.append(MCSResult(item))
+
+        return items
 
     def map(self, object_type, unique_key="id", **kwargs):
         """
@@ -138,12 +167,9 @@ class MiniCloudStack(object):
         :return: hash map with result objects
         """
         m = {}
-        result = self.call("list " + object_type, **kwargs)
-        if result:
-            lower_case = "".join(object_type.split()).lower()
-            singular = guess_singular(lower_case)
-            for item in peel(result, singular):
-                m[item[unique_key]] = MCSResult(item)
+        items = self.list(object_type, **kwargs)
+        for i in items:
+            m[i._raw[unique_key]] = i
 
         return m
 
@@ -180,13 +206,13 @@ class MiniCloudStack(object):
 
         if "jobid" in result:
             jobid = peel(result, ".jobid")
-            if verbose > 1:
+            if VERBOSE > 1:
                 print("Waiting for job {} to be finished".format(jobid))
             retries = DEFAULT_JOBID_WAIT_COUNT
             sleep_time = 1  # first one is 1s
             while retries:
                 result = self._call_api_internal("query async job result", jobid=jobid)
-                if verbose > 1:
+                if VERBOSE > 1:
                     print("job {} status: {}".format(jobid, result))
                 jobstatus = peel(result, ".jobstatus")
                 if jobstatus == 0:
@@ -209,13 +235,13 @@ class MiniCloudStack(object):
         api = api_function(api)
         unwrap_args = self._unwrap_args(kwargs)
         description = "{}({})".format(api, ", ".join(sorted(["{}={}".format(a, repr(b)) for a, b in unwrap_args.items()])))
-        if verbose:
+        if VERBOSE:
             print("CALL:   {}".format(description))
         reqres, reqerror = requester.make_request(
             api, unwrap_args, None, self._url, self._creds, 0, verifysslcert=self._verifysslcert)
         if reqerror:
             raise MiniCloudStackException("Failed to run: {}: {}".format(description, reqerror))
-        if verbose > 1:
+        if VERBOSE > 1:
             print("RESULT: {}".format(reqres))
         try:
             rdict = json.loads(reqres)
@@ -267,7 +293,7 @@ class MCSResult(object):
                 setattr(self, a, MCSResult(b) if isinstance(b, dict) else b)
 
     def __str__(self):
-        return "MCSResult({})".format(", ".join(["{}={}".format(a, b) for a, b in self.__dict__.items()]))
+        return "MCSResult({})".format(", ".join(["{}={}".format(a, b) for a, b in self.as_dict().items()]))
 
     def as_dict(self):
         return self._raw
@@ -296,7 +322,6 @@ def peel(result, dotted):
     :param dotted: field name / path
     :return: data found
     """
-    #
     if dotted.startswith("."):
         dotted = dotted[1:]
     current = result
@@ -334,7 +359,7 @@ def obj_if_exists(cs, type, **kwargs):
         print("Warning: more than one object found in {}".format(type))
     elif len(results.keys()) == 1:
         key, value = results.popitem()
-        if verbose:
+        if VERBOSE:
             print("Found existing object {} with id {}".format(type, key))
         return value
     else:
@@ -435,14 +460,14 @@ class IpCidr(object):
         return self._netmask
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v", "--verbose", action="count",
                         help="Increase output verbosity")
 
     add_arguments(parser)
     args = parser.parse_args()
-    verbose = args.verbose
+    set_verbosity(args.verbose)
     cs = MiniCloudStack(args)
     major, minor = cs.version()
     print("Cloudstack version: {}.{}".format(major, minor))
@@ -462,3 +487,7 @@ if __name__ == "__main__":
 
     for name in sorted(api_desc.keys()):
         print("{:23}  {}".format(name, api_desc[name]))
+
+
+if __name__ == "__main__":
+    main()
