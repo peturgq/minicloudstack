@@ -1,22 +1,29 @@
-#!/usr/bin/env python
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-# Copyright 2015 Greenqloud ehf
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
-# sverrir@greenqloud.com
-#
-# Create a new zone
-#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
-import minicloudstack
-import qstack_network_offerings
-import qstack_hosts
-import qstack_baremetal
+import mcs as minicloudstack
+import networkoffering
+import addhost
+import baremetal
 
 import argparse
-import ConfigParser
-import StringIO
 import re
-import os
 from urlparse import urlparse, parse_qs
 
 RE_VLAN_RANGE = re.compile("^([0-9]{1,4})-([0-9]{1,4})$")
@@ -218,14 +225,14 @@ def create_network(cs, zone, pn, name, hyperv, update):
     if not network:
         # find correct network offering
         if hyperv == "baremetal":
-            offering_name = qstack_network_offerings.BAREMETAL_SHARED_NO
+            offering_name = networkoffering.BAREMETAL_SHARED_NO
         else:
-            offering_name = qstack_network_offerings.DEFAULT_SHARED_NO
+            offering_name = networkoffering.DEFAULT_SHARED_NO
         try:
             network_offering = cs.obj("list network offerings", name=offering_name)
             # If this fails the system has not been configured correctly (normally created with qstack_add_network_offerings.py ?).
         except:
-            qstack_network_offerings.add_network_offerings(cs)
+            networkoffering.add_network_offerings(cs)
             network_offering = cs.obj("list network offerings", name=offering_name)
         if verbose:
             print "Found network offering {} [{}]".format(offering_name, network_offering.id)
@@ -468,7 +475,7 @@ def create_all(arguments):
     pn_pu, pn_pr = create_physicalnetworks(cs, zone, hypervisor, adv_netw, arguments.mgmtvlan, arguments.pubvlan, arguments.guestvlan, arguments.update)
 
     podname = arguments.name + "-pod1"   # Assume no-one cares about pod name.
-    pod = qstack_hosts.create_pod(cs, zone, podname, mgmtgateway, mgmtnet, mgmt_startip, mgmt_endip, arguments.update)
+    pod = addhost.create_pod(cs, zone, podname, mgmtgateway, mgmtnet, mgmt_startip, mgmt_endip, arguments.update)
 
     if not adv_netw:
         # Basic networking zones need one network that is created here (advanced automatically creates network pr account).
@@ -487,12 +494,12 @@ def create_all(arguments):
 
     clustername = podname + "-" + hypervisor.lower() + "-cluster1"  # Assume no-one cares about cluster name.
 
-    cluster = qstack_hosts.add_cluster(cs, zone, pod, clustername, hypervisor, arguments.username, arguments.password, url, arguments.update)
+    cluster = addhost.add_cluster(cs, zone, pod, clustername, hypervisor, arguments.username, arguments.password, url, arguments.update)
 
     if hypervisor == "kvm" or hypervisor == "hyperv":
-        qstack_hosts.add_host(cs, zone, pod, cluster, hypervisor, arguments.host, arguments.username, arguments.password, arguments.update)
+        addhost.add_host(cs, zone, pod, cluster, hypervisor, arguments.host, arguments.username, arguments.password, arguments.update)
     elif hypervisor == 'baremetal':
-        qstack_hosts.add_baremetal_host(cs, zone, pod, cluster, hypervisor, arguments.host, arguments.username, arguments.password, arguments.baremetalhostmac, arguments.baremetalcpuspeed, arguments.baremetalcpunumber, arguments.baremetalmemory, None, None, arguments.update)
+        addhost.add_baremetal_host(cs, zone, pod, cluster, hypervisor, arguments.host, arguments.username, arguments.password, arguments.baremetalhostmac, arguments.baremetalcpuspeed, arguments.baremetalcpunumber, arguments.baremetalmemory, None, None, arguments.update)
     if hypervisor != "baremetal":
         if not localstorage:
             storagepool_name = clustername + "primary"   # Assume no-one cares...
@@ -512,7 +519,7 @@ def create_all(arguments):
 
     if hypervisor == "baremetal":
         # We assume that the zone is basic baremetal, make and set up all PXE related stuff
-        qstack_baremetal.post_baremetal_basic_zone_update(cs, pn_pu, pod, arguments)
+        baremetal.post_baremetal_basic_zone_update(cs, pn_pu, pod, arguments)
 
     # Enable zone.
     cs.call("update zone", id=zone.id, allocationstate="Enabled")
