@@ -17,17 +17,16 @@
 # specific language governing permissions and limitations
 # under the License.
 
-
 from __future__ import print_function
 
 import argparse
+import collections
 import json
 import os
 import re
 import time
 
 import requester
-
 
 DEFAULT_JOBID_WAIT_COUNT = 60    # 60 * 5s == 5 minutes
 verbose = 0
@@ -44,44 +43,67 @@ class MiniCloudStackException(Exception):
     pass
 
 
-def add_arguments(parser):
+Configuration = collections.namedtuple(
+    "Configuration",
+    "url apikey secretkey verifysslcert"
+)
+
+
+def get_env_defaults():
     """
-    Add required connection arguments to argumentparser
+    Tries to read default configuration from environment.
+    :return: Configuration instance
+    """
+    return Configuration(
+        url=os.environ.get("CS_API_URL", os.environ.get("CS_URL", "")),
+        apikey=os.environ.get("CS_API_KEY", ""),
+        secretkey=os.environ.get("CS_SECRET_KEY", ""),
+        verifysslcert=not (os.environ.get("CS_SSL_NO_VERIFY", "").strip().lower() in [
+            "true", "yes", "1"
+        ])
+    )
+
+
+def add_arguments(parser, defaults=None):
+    """
+    Add required connection arguments
     :param parser: ArgumentParser instance
+    :param defaults: Configuration instance with defaults or 'None'
     """
-    url = os.environ.get("CS_URL", "")
-    apikey = os.environ.get("CS_API_KEY", "")
-    secretkey = os.environ.get("CS_SECRET_KEY", "")
+    if not defaults:
+        defaults = get_env_defaults()
 
     cs = parser.add_argument_group(
             "Connection",
             "CloudStack connection options (environment variable name).")
-    cs.add_argument("-u", "--url", default=url, required=(len(url) == 0),
-                    help="url to cloudstack api server (CS_URL)")
-    cs.add_argument("-a", "--apikey", default=apikey, required=(len(apikey) == 0),
+    cs.add_argument("-u", "--url", default=defaults.url, required=(len(defaults.url) == 0),
+                    help="url to cloudstack api server (CS_API_URL)")
+    cs.add_argument("-a", "--apikey", default=defaults.apikey, required=(len(defaults.apikey) == 0),
                     help="API Key (CS_API_KEY)")
-    cs.add_argument("-s", "--secretkey", default=secretkey, required=(len(secretkey) == 0),
+    cs.add_argument("-s", "--secretkey", default=defaults.secretkey, required=(len(defaults.secretkey) == 0),
                     help="Secret Key (CS_SECRET_KEY)")
-    cs.add_argument("--verifysslcert", action="store_true", default=False,
+    cs.add_argument("--verifysslcert", action="store_true", default=defaults.verifysslcert,
                     help="Validate SSL certificates")
 
 
-
 class MiniCloudStack(object):
-    def __init__(self, args):
+    def __init__(self, args=None):
         """
         Initialize connection to cloudstack.  See add_arguments for help adding those to your program.
         :param args: object with connection arguments (url, apikey, secretkey)
         """
-        self.creds = {
+        if not args:
+            args = get_env_defaults()
+
+        self._creds = {
             "apikey": args.apikey,
             "secretkey": args.secretkey
         }
-        self.url = args.url
-        self.verifysslcert = args.verifysslcert
+        self._url = args.url
+        self._verifysslcert = args.verifysslcert
 
         # Trigger first call to check credentials
-        self.capability = self.obj("list capabilities")
+        self._capability = self.obj("list capabilities")
 
     def obj(self, api, **kwargs):
         """
@@ -141,7 +163,7 @@ class MiniCloudStack(object):
         """
         :return: Cloudstack version in major,minor form (.e.g 4,2)
         """
-        version = self.capability.cloudstackversion
+        version = self._capability.cloudstackversion
         components = version.split(".")
         if len(components) < 2:
             raise MiniCloudStackException("Failed to get cloudstack version ({})".format(version))
@@ -189,7 +211,8 @@ class MiniCloudStack(object):
         description = "{}({})".format(api, ", ".join(sorted(["{}={}".format(a, repr(b)) for a, b in unwrap_args.items()])))
         if verbose:
             print("CALL:   {}".format(description))
-        reqres, reqerror = requester.make_request(api, unwrap_args, None, self.url, self.creds, 0, verifysslcert=self.verifysslcert)
+        reqres, reqerror = requester.make_request(
+            api, unwrap_args, None, self._url, self._creds, 0, verifysslcert=self._verifysslcert)
         if reqerror:
             raise MiniCloudStackException("Failed to run: {}: {}".format(description, reqerror))
         if verbose > 1:
@@ -317,6 +340,7 @@ def obj_if_exists(cs, type, **kwargs):
     else:
         return None
 
+
 def guess_singular(word):
     if word.endswith("ies"):
         return word[:-3] + "y"
@@ -420,8 +444,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     verbose = args.verbose
     cs = MiniCloudStack(args)
-    print("Cloudstack version: {}".format(cs.version()))
+    major, minor = cs.version()
+    print("Cloudstack version: {}.{}".format(major, minor))
     print(vars(cs.obj("list capabilities")))
-    print(vars(cs.call("list zones")))
+
+    print("")
+    print("All zones:")
     for zone in cs.map("zones").values():
         print(zone.name, zone.id)
+
+    print("")
+    print("Fetching full API list:")
+    apis = cs.call("list apis")
+    api_desc = {}
+    for a in apis["api"]:
+        api_desc[a["name"]] = a["description"]
+
+    for name in sorted(api_desc.keys()):
+        print("{:23}  {}".format(name, api_desc[name]))
