@@ -20,8 +20,6 @@
 import mcs as minicloudstack
 import argparse
 
-verbose = 0
-
 
 def add_baremetal_service_offering(cs, host):
     service_offering = None
@@ -115,8 +113,6 @@ def add_baremetal_advanced_switch(cs, ipaddress, username, password, switch_type
 
 
 def main():
-    global verbose
-
     parser = argparse.ArgumentParser("Qstack Baremetal")
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
     minicloudstack.add_arguments(parser)
@@ -130,7 +126,6 @@ def main():
 
     arguments = parser.parse_args()
 
-    verbose = arguments.verbose
     minicloudstack.set_verbosity(arguments.verbose)
 
     try:
@@ -138,7 +133,7 @@ def main():
             cs = minicloudstack.MiniCloudStack(arguments)
             add_baremetal_advanced_switch(cs, arguments.switchip, arguments.switchusername, arguments.switchpassword, arguments.switchtype)
     except minicloudstack.MiniCloudStackException as e:
-        if verbose > 1:
+        if minicloudstack.get_verbosity() > 1:
             raise e
         else:
             print " - - - "

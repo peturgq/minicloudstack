@@ -20,9 +20,7 @@
 import argparse
 import time
 
-from mcs import MiniCloudStack, add_arguments, set_verbosity, MiniCloudStackException
-
-verbose = 0
+from mcs import MiniCloudStack, add_arguments, set_verbosity, get_verbosity, MiniCloudStackException
 
 
 def handle_exception(ignore, exception):
@@ -62,7 +60,7 @@ def delete_zone(cs, zone, force=False, ignore=False):
         if host.resourcestate == "Maintenance":
             wait_for_hosts.remove(hid)
             continue
-        elif verbose:
+        elif get_verbosity():
             print "Host {} in {} mode".format(hid, host.resourcestate)
         time.sleep(5)
 
@@ -218,8 +216,6 @@ def delete_zones(arguments):
 
 
 def main():
-    global verbose
-
     parser = argparse.ArgumentParser(usage="Destroys zone(s) - WITH EVERYTHING IN THEM!!!")
 
     add_arguments(parser)
@@ -239,14 +235,12 @@ def main():
 
     arguments = parser.parse_args()
 
-    if arguments.verbose:
-        verbose = arguments.verbose
-        set_verbosity(arguments.verbose)
+    set_verbosity(arguments.verbose)
 
     try:
         delete_zones(arguments)
     except MiniCloudStackException as e:
-        if verbose > 1:
+        if get_verbosity() > 1:
             raise e
         else:
             print " - - - "

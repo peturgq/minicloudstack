@@ -21,7 +21,6 @@ import mcs as minicloudstack
 
 import argparse
 
-verbose = 0
 DEFAULT_OSTYPE = "Other Linux (64-bit)"
 
 
@@ -31,7 +30,7 @@ def obj_if_exists(cs, type, **kwargs):
         print "Warning: more than one object found in '{}".format(type)
     elif len(results.keys()) == 1:
         key, value = results.popitem()
-        if verbose:
+        if minicloudstack.get_verbosity():
             print "Found existing object '{}' with id '{}'".format(type, key)
         return value
     else:
@@ -45,7 +44,7 @@ def register_template(arguments):
 
     ostype = DEFAULT_OSTYPE
     ostype = obj_if_exists(cs, "os types", description=ostype)
-    if verbose:
+    if minicloudstack.get_verbosity():
         print("Using ostype $%s [%s]", ostype.description, ostype.id)
 
     cs.call("register template",
@@ -61,8 +60,6 @@ def register_template(arguments):
 
 
 def main():
-    global verbose
-
     parser = argparse.ArgumentParser("Register a template")
 
     parser.add_argument("-v",  "--verbose", action="count", help="Increase output verbosity")
@@ -84,13 +81,12 @@ def main():
 
     arguments = parser.parse_args()
 
-    verbose = arguments.verbose
     minicloudstack.set_verbosity(arguments.verbose)
 
     try:
         register_template(arguments)
     except minicloudstack.MiniCloudStackException as e:
-        if verbose > 1:
+        if minicloudstack.get_verbosity() > 1:
             raise e
         else:
             print(" - - - ")

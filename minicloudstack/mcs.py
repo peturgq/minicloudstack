@@ -43,6 +43,14 @@ def set_verbosity(verbosity=0):
     VERBOSE = verbosity
 
 
+def get_verbosity():
+    """
+    See 'set_verbosity()'
+    :return: level of verbosity 0..N
+    """
+    return VERBOSE
+
+
 class MiniCloudStackException(Exception):
     pass
 
@@ -468,22 +476,21 @@ def main():
     add_arguments(parser)
     args = parser.parse_args()
     set_verbosity(args.verbose)
-    cs = MiniCloudStack(args)
-    major, minor = cs.version()
+    mcs = MiniCloudStack(args)
+    major, minor = mcs.version()
     print("Cloudstack version: {}.{}".format(major, minor))
-    print(vars(cs.obj("list capabilities")))
+    print(vars(mcs.obj("list capabilities")))
 
     print("")
     print("All zones:")
-    for zone in cs.map("zones").values():
+    for zone in mcs.list("zones"):
         print(zone.name, zone.id)
 
     print("")
     print("Fetching full API list:")
-    apis = cs.call("list apis")
     api_desc = {}
-    for a in apis["api"]:
-        api_desc[a["name"]] = a["description"]
+    for a in mcs.list("apis"):
+        api_desc[a.name] = a.description
 
     for name in sorted(api_desc.keys()):
         print("{:23}  {}".format(name, api_desc[name]))

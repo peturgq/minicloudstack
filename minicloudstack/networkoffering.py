@@ -23,7 +23,6 @@ import minicloudstack
 
 import argparse
 
-verbose = 0
 BASE_ISOLATED_NO = "DefaultIsolatedNetworkOfferingWithSourceNatService"
 DEFAULT_ISOLATED_NO = "DefaultIsolatedNetworkOfferingWithSourceNatServiceEgressEnabled"
 DEFAULT_ISOLATED_NO_DISPLAY = "Offering for Isolated networks with Source Nat service and Egress enabled"
@@ -80,7 +79,7 @@ def get_offering(cs, offering_name):
 def populate_services_and_providers(supportedservices, serviceproviderlist, add_services, base_offering=None):
     if base_offering:
         for service in base_offering.service:
-            if verbose:
+            if minicloudstack.get_verbosity():
                 print("service:")
                 print("  name:", service.name)
                 print("  provider:", [p.name for p in service.provider])
@@ -91,7 +90,7 @@ def populate_services_and_providers(supportedservices, serviceproviderlist, add_
                 serviceproviderlist.append({"service": service.name, "provider": provider.name})
 
     for service in add_services:
-        if verbose:
+        if minicloudstack.get_verbosity():
             print("Adding service:", service["service"], service["provider"])
         supportedservices.append(service["service"])
         serviceproviderlist.append(service)
@@ -123,14 +122,14 @@ def make_default_offering_optional(cs):
     # There can be only one Required offering, so we need to make any existing "Optional").
     required = cs.obj("list network offerings", availability="Required")
     if required:
-        if verbose:
+        if minicloudstack.get_verbosity():
             print("Making {} Optional [{}]", required.name, required.id)
         cs.call("update network offering", id=required.id, availability="Optional")
 
 
 def add_isolated_network_service_offering(cs, base_offering_name, new_offering_name, new_offering_display):
     if get_offering(cs, new_offering_name):
-        if verbose:
+        if minicloudstack.get_verbosity():
             print("{} already in place".format(new_offering_name))
         return
 
@@ -149,7 +148,7 @@ def add_isolated_network_service_offering(cs, base_offering_name, new_offering_n
 
 def add_baremetal_shared_network_offering(cs):
     if get_offering(cs, BAREMETAL_SHARED_NO):
-        if verbose:
+        if minicloudstack.get_verbosity():
             print("{} already in place".format(new_offering_name))
         return
 
@@ -244,8 +243,6 @@ def ensure_network_service_provider(cs, zone, phys_netw_id, phys_netw_service_pr
 
 
 def main():
-    global verbose
-
     parser = argparse.ArgumentParser("Adds default Qstack network offerings if they have not been installed")
 
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
@@ -254,7 +251,6 @@ def main():
 
     arguments = parser.parse_args()
 
-    verbose = arguments.verbose
     minicloudstack.set_verbosity(arguments.verbose)
 
     cs = minicloudstack.MiniCloudStack(arguments)

@@ -28,8 +28,6 @@ from urlparse import urlparse, parse_qs
 
 RE_VLAN_RANGE = re.compile("^([0-9]{1,4})-([0-9]{1,4})$")
 
-verbose = 0
-
 
 def enable_networkserviceproviders(cs, pn, providers, update):
     nsps = cs.map("network service providers", physicalnetworkid=pn.id)
@@ -37,7 +35,7 @@ def enable_networkserviceproviders(cs, pn, providers, update):
         nsp = None
         for find_nsp in nsps.itervalues():
             if find_nsp.name == provider:
-                if verbose:
+                if minicloudstack.get_verbosity():
                     print "Enabling service provider {} for physical network {}".format(find_nsp.name, pn.id)
                 nsp = find_nsp
                 break
@@ -57,11 +55,11 @@ def enable_networkserviceproviders(cs, pn, providers, update):
             continue
 
         if nsp.state == "Enabled":
-            if verbose:
+            if minicloudstack.get_verbosity():
                 print "Network service provider {} already enabled".format(provider)
             continue
 
-        if verbose:
+        if minicloudstack.get_verbosity():
             print "Enabling network service provider {}".format(provider)
 
         if nsp.name in ["VirtualRouter", "VpcVirtualRouter", "VirtualRouterSG"]:
@@ -96,7 +94,7 @@ def add_traffictype(cs, pnid, attrs, update):
                         break
             if match:
                 return
-    if verbose:
+    if minicloudstack.get_verbosity():
         print "Adding traffictype to '{}': {}".format(pnid, attrs)
     cs.obj("add traffic type", physicalnetworkid=pnid, **attrs)
 
@@ -196,7 +194,7 @@ def create_physicalnetworks(cs, zone, hyperv, adv_netw, mgmt_vlan, public_vlan, 
                 pn2 = pn1
                 pn1 = tmp
 
-            if verbose:
+            if minicloudstack.get_verbosity():
                 print "Found existing objects '{}' with ids '{}' and '{}".format(type, key1, key2)
         elif len(pns.keys()) == 1:
             key1, pn1 = pns.popitem()
@@ -234,7 +232,7 @@ def create_network(cs, zone, pn, name, hyperv, update):
         except:
             networkoffering.add_network_offerings(cs)
             network_offering = cs.obj("list network offerings", name=offering_name)
-        if verbose:
+        if minicloudstack.get_verbosity():
             print "Found network offering {} [{}]".format(offering_name, network_offering.id)
 
         network = cs.obj(
@@ -412,7 +410,7 @@ def prevent_broadcast_ip(cidr, ip):
     result = ip
     if ip.dotted() == cidr.lastip().dotted():
         result = ip.new_adding(-1)
-        if verbose > 1:
+        if minicloudstack.get_verbosity() > 1:
             print "Preventing collision with broadcast IP {} -> {}".format(ip.dotted(), result.dotted())
     return result
 
@@ -457,7 +455,7 @@ def create_all(arguments):
 
     vmpublic_endip = prevent_broadcast_ip(pubnet, vmpublic_endip)
 
-    if verbose:
+    if minicloudstack.get_verbosity():
         print "Mgmt network {}-{} [{} gw: {}] VLAN: '{}'".format(
                 mgmt_startip.dotted(), mgmt_endip.dotted(),
                 mgmtnet.cidr(), mgmtgateway.dotted(), arguments.mgmtvlan)
@@ -526,8 +524,6 @@ def create_all(arguments):
 
 
 def main():
-    global verbose
-
     parser = argparse.ArgumentParser("Create a new zone")
 
     parser.add_argument("-v",  "--verbose", action="count", help="Increase output verbosity")
@@ -598,13 +594,12 @@ def main():
         if arguments.primarystorage is None or arguments.secondarystorage is None:
             raise parser.error("You must specify primary and secondary storage if you are creating something else than a baremetal zone")
 
-    verbose = arguments.verbose
     minicloudstack.set_verbosity(arguments.verbose)
 
     try:
         create_all(arguments)
     except minicloudstack.MiniCloudStackException as e:
-        if verbose > 1:
+        if minicloudstack.get_verbosity() > 1:
             raise e
         else:
             print " - - - "

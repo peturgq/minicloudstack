@@ -22,7 +22,6 @@ import baremetal
 
 import argparse
 
-verbose = 0
 
 def add_host(cs, zone, pod, cluster, hypervisor, host_url, username, password, update):
     host = None
@@ -144,7 +143,7 @@ def add_host_default(arguments):
     hypervisor = arguments.hypervisor
 
     zone = cs.obj("list zones", name=arguments.zone)
-    if verbose:
+    if minicloudstack.get_verbosity():
         print "Found zone [{}]".format(zone.id)
 
     pods = cs.map("pods", zoneid=zone.id)
@@ -153,7 +152,7 @@ def add_host_default(arguments):
         return False
 
     podid, pod = pods.popitem()
-    if verbose:
+    if minicloudstack.get_verbosity():
         print "Found pod {} [{}] in zone".format(pod.name, pod.id)
 
     clusters = cs.map("clusters", zoneid=zone.id, podid=pod.id, hypervisor=arguments.hypervisor)
@@ -164,7 +163,7 @@ def add_host_default(arguments):
     else:
         clusterid, cluster = clusters.popitem()
 
-    if verbose:
+    if minicloudstack.get_verbosity():
         print "Found cluster {} [{}] in pod".format(cluster.name, cluster.id)
 
     host_url = arguments.host
@@ -188,8 +187,6 @@ def add_host_default(arguments):
 
 
 def main():
-    global verbose
-
     parser = argparse.ArgumentParser("Add a host to an existing zone")
 
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
@@ -211,13 +208,12 @@ def main():
 
     arguments = parser.parse_args()
 
-    verbose = arguments.verbose
     minicloudstack.set_verbosity(arguments.verbose)
 
     try:
         add_host_default(arguments)
     except minicloudstack.MiniCloudStackException as e:
-        if verbose > 1:
+        if minicloudstack.get_verbosity() > 1:
             raise e
         else:
             print " - - - "
