@@ -228,7 +228,6 @@ def create_network(cs, zone, pn, name, hyperv, update):
             offering_name = networkoffering.DEFAULT_SHARED_NO
         try:
             network_offering = cs.obj("list network offerings", name=offering_name)
-            # If this fails the system has not been configured correctly (normally created with qstack_add_network_offerings.py ?).
         except:
             networkoffering.add_network_offerings(cs)
             network_offering = cs.obj("list network offerings", name=offering_name)

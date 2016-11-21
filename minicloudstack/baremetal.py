@@ -50,32 +50,12 @@ def add_baremetal_service_offering(cs, host):
         )
 
 
-def get_baremetal_basic_bootserver_username(arguments):
-    return "root"
-
-
-def get_baremetal_basic_bootserver_password(arguments):
-    baremetalpassword = arguments.baremetalpassword
-    if baremetalpassword:
-        return baremetalpassword
-    else:
-        config = StringIO.StringIO()
-        config.write('[dummysection]\n')
-        config.write(open('/etc/default/qstack-baremetal').read())
-        config.seek(0, os.SEEK_SET)
-        cp = ConfigParser.ConfigParser()
-        cp.readfp(config)
-        password = cp.get('dummysection', 'CONTAINER_PASSWORD')
-        password = password[1:-1]
-        return password
-
-
-def post_baremetal_basic_zone_update(cs, pu, pod, arguments):
+def post_baremetal_basic_zone_update(cs, pu, pod, arguments, bootserver_user="root", bootserver_password="password"):
     baremetalip = arguments.baremetalip
     url = "http://" + baremetalip + "/"
     tftpdir = "/var/lib/tftpboot/"
-    username = get_baremetal_basic_bootserver_username(arguments)
-    password = get_baremetal_basic_bootserver_password(arguments)
+    username = bootserver_user
+    password = bootserver_password
     cs.call("add baremetal dhcp",
             physicalnetworkid=pu.id,
             dhcpservertype="DHCPD",
@@ -113,7 +93,7 @@ def add_baremetal_advanced_switch(cs, ipaddress, username, password, switch_type
 
 
 def main():
-    parser = argparse.ArgumentParser("Qstack Baremetal")
+    parser = argparse.ArgumentParser("minicloudstack baremetal")
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
     minicloudstack.add_arguments(parser)
 

@@ -243,7 +243,7 @@ def ensure_network_service_provider(cs, zone, phys_netw_id, phys_netw_service_pr
 
 
 def main():
-    parser = argparse.ArgumentParser("Adds default Qstack network offerings if they have not been installed")
+    parser = argparse.ArgumentParser("Adds default network offerings if they have not been installed")
 
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
 
