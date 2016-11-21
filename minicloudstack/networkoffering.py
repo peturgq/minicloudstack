@@ -19,12 +19,9 @@
 
 from __future__ import print_function
 
-import mcs as minicloudstack
-
-import MySQLdb
+import minicloudstack
 
 import argparse
-import os
 
 verbose = 0
 BASE_ISOLATED_NO = "DefaultIsolatedNetworkOfferingWithSourceNatService"
@@ -33,6 +30,7 @@ DEFAULT_ISOLATED_NO_DISPLAY = "Offering for Isolated networks with Source Nat se
 DEFAULT_SHARED_NO = "DefaultSharedNetworkOfferingWithSGService"
 BAREMETAL_SHARED_NO = "BaremetalSharedNetworkOffering"
 BAREMETAL_SHARED_NO_DISPLAY = "Baremetal offering for Shared networks"
+
 
 def get_additional_bm_shared_services():
    return [{
@@ -63,9 +61,9 @@ def get_additional_default_isolated_services():
         "provider": "VirtualRouter"
     }]
 
-def add_network_offerings(cs, mysql_conn):
+
+def add_network_offerings(cs):
     add_isolated_network_service_offering(cs, BASE_ISOLATED_NO, DEFAULT_ISOLATED_NO, DEFAULT_ISOLATED_NO_DISPLAY)
-    ensure_baremetal_pxe_service(cs, mysql_conn) # adds BaremetalPxeService to EgressEnabled offerings without it
     service_provider_names_to_add = [svc["provider"] for svc in get_additional_default_isolated_services()]
     ensure_network_service_providers(cs, service_provider_names_to_add)
     add_baremetal_shared_network_offering(cs)
@@ -164,39 +162,6 @@ def add_baremetal_shared_network_offering(cs):
     print("Network offering created and enabled {} ({})".format(BAREMETAL_SHARED_NO, offering.id))
 
 
-def ensure_baremetal_pxe_service(cs, mysql_conn):
-    """Ensure that the BaremetalPxeService is on the EgressEnabled network
-       offering. This is a database call, because there is no way to
-       update the services on network offerings via API command. This
-       function call is in place to handle upgrading older Pottlok
-       installations that don't have the service enabled on their
-       network offering. True is returned if the offering is added,
-       False is returned if it's already there."""
-    offering = cs.obj("list network offerings", name=DEFAULT_ISOLATED_NO)
-
-    if offering.service:
-        pxe_service = "BaremetalPxeService"
-        exists = [entry.name for entry in offering.service if entry.name == pxe_service]
-        if exists:
-            print("{} is already on offering {}.".format(pxe_service, DEFAULT_ISOLATED_NO))
-            return False
-        else:
-            cursor = mysql_conn.cursor()
-            print("{} is NOT on {}!".format(pxe_service, DEFAULT_ISOLATED_NO))
-            sql = "select id from network_offerings where uuid = '%s'" % offering.id
-            cursor.execute(sql)
-            offering_db_id = cursor.fetchone()[0]
-
-            sql = "insert into ntwk_offering_service_map (network_offering_id, service, provider, created)"
-            sql += " values (%s, '%s', '%s', NOW())" % (offering_db_id, pxe_service, "BaremetalPxeProvider")
-            cursor.execute(sql)
-            mysql_conn.commit()
-            print("{} now enabled on {}".format(pxe_service, DEFAULT_ISOLATED_NO))
-            return True
-    else:
-        raise ValueError("No service entry for the offering found!")
-
-
 def get_zone_dict(cs):
     """Assemble a dict of zones (zone ID -> zone dict) in the system."""
     zone_list = cs.call("list zones")
@@ -285,18 +250,6 @@ def main():
 
     parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
 
-    # mysql connection info
-    host = os.environ.get("MYSQL_HOST", "")
-    user = os.environ.get("MYSQL_USER", "")
-    password = os.environ.get("MYSQL_PW", "")
-    db = os.environ.get("MYSQL_DB", "")
-
-    mysql = parser.add_argument_group("MySQL", "MySQL connection info")
-    mysql.add_argument("--host", default=host, required=(len(host) == 0), help="MySQL hostname")
-    mysql.add_argument("--user", default=user, required=(len(user) == 0), help="MySQL username")
-    mysql.add_argument("--password", default=password, required=(len(host) == 0), help="MySQL password")
-    mysql.add_argument("--db", default=db, required=(len(db) == 0), help="MySQL database")
-
     minicloudstack.add_arguments(parser)
 
     arguments = parser.parse_args()
@@ -305,9 +258,7 @@ def main():
     minicloudstack.set_verbosity(arguments.verbose)
 
     cs = minicloudstack.MiniCloudStack(arguments)
-    mysql_conn = MySQLdb.connect(arguments.host, arguments.user, arguments.password, arguments.db)
-    add_network_offerings(cs, mysql_conn)
-    mysql_conn.close()
+    add_network_offerings(cs)
 
 
 if __name__ == "__main__":
