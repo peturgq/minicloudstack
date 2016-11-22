@@ -34,7 +34,7 @@ for template in mcs.list("templates", templatefilter="featured"):
 
 Helper scripts
 --------------
-Also provider are the following scripts that can be useful:
+Also provided are the following scripts that can be useful:
 
 * mcs-createzone
 * mcs-deletezone
@@ -47,9 +47,9 @@ Start them with --help for detailed instructions.
 
 Background
 ----------
-These scripts where created by Greenqloud (see: https://www.greenqloud.com/ ).
+These scripts were created by Greenqloud (see: https://www.greenqloud.com/ ).
 
-The scripts where used in development of Qstack ( see: https://qstack.com/ ) but can be used with any CloudStack server.
+The scripts were used in development of Qstack ( see: https://qstack.com/ ) but can be used with any CloudStack server.
 
 We hope you find them useful!
 
