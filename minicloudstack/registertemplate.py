@@ -17,9 +17,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import mcs as minicloudstack
-
+from __future__ import print_function
 import argparse
+
+from . import mcs as minicloudstack
 
 DEFAULT_OSTYPE = "Other Linux (64-bit)"
 
@@ -27,11 +28,11 @@ DEFAULT_OSTYPE = "Other Linux (64-bit)"
 def obj_if_exists(cs, type, **kwargs):
     results = cs.map(type, **kwargs)
     if len(results.keys()) > 1:
-        print "Warning: more than one object found in '{}".format(type)
+        print("Warning: more than one object found in '{}".format(type))
     elif len(results.keys()) == 1:
         key, value = results.popitem()
         if minicloudstack.get_verbosity():
-            print "Found existing object '{}' with id '{}'".format(type, key)
+            print("Found existing object '{}' with id '{}'".format(type, key))
         return value
     else:
         return None
@@ -62,7 +63,8 @@ def register_template(arguments):
 def main():
     parser = argparse.ArgumentParser("Register a template")
 
-    parser.add_argument("-v",  "--verbose", action="count", help="Increase output verbosity")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase output verbosity")
 
     parser.add_argument("-hy", "--hypervisor", default="kvm",
                         choices=["kvm", "vmware", "hyperv", "baremetal"], help="Type of hypervisor cluster to add")

@@ -26,7 +26,7 @@ import os
 import re
 import time
 
-import requester
+from . import requester
 
 DEFAULT_JOBID_WAIT_COUNT = 60    # 60 * 5s == 5 minutes
 VERBOSE = 0
@@ -40,7 +40,7 @@ def set_verbosity(verbosity=0):
     :param verbosity: 0=low, 1=details, 2=very verbose, 3=debug
     """
     global VERBOSE
-    VERBOSE = verbosity
+    VERBOSE = int(verbosity)
 
 
 def get_verbosity():
@@ -246,7 +246,7 @@ class MiniCloudStack(object):
         if VERBOSE:
             print("CALL:   {}".format(description))
         reqres, reqerror = requester.make_request(
-            api, unwrap_args, None, self._url, self._creds, 0, verifysslcert=self._verifysslcert)
+            api, unwrap_args, self._url, self._creds, 0, verifysslcert=self._verifysslcert)
         if reqerror:
             raise MiniCloudStackException("Failed to run: {}: {}".format(description, reqerror))
         if VERBOSE > 1:
@@ -470,7 +470,7 @@ class IpCidr(object):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-v", "--verbose", action="count",
+    parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Increase output verbosity")
 
     add_arguments(parser)

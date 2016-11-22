@@ -17,15 +17,16 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import print_function
 import argparse
 import time
 
-from mcs import MiniCloudStack, add_arguments, set_verbosity, get_verbosity, MiniCloudStackException
+from . import mcs as minicloudstack
 
 
 def handle_exception(ignore, exception):
     if ignore:
-        print "WARNING - Ignoring problem:", exception.message
+        print("WARNING - Ignoring problem:", exception.message)
     else:
         raise exception
 
@@ -37,7 +38,7 @@ def is_set(obj, attr):
 
 
 def delete_zone(cs, zone, force=False, ignore=False):
-    print "Deleting {} [{}]".format(zone.name, zone.id)
+    print("Deleting {} [{}]".format(zone.name, zone.id))
 
     # Prevent anything to be created in the zone
     if zone.allocationstate == "Enabled":
@@ -46,7 +47,7 @@ def delete_zone(cs, zone, force=False, ignore=False):
     # Set hosts to maintenance mode
     hosts = cs.map("hosts", zoneid=zone.id, type="Routing")
     wait_for_hosts = []
-    for hid, host in hosts.iteritems():
+    for hid, host in hosts.items():
         if host.state == "Up" and host.resourcestate != "Maintenance":
             cs.call("prepare host for maintenance", id=hid)
             if host.clustertype == "CloudManaged":
@@ -60,125 +61,125 @@ def delete_zone(cs, zone, force=False, ignore=False):
         if host.resourcestate == "Maintenance":
             wait_for_hosts.remove(hid)
             continue
-        elif get_verbosity():
-            print "Host {} in {} mode".format(hid, host.resourcestate)
+        elif minicloudstack.get_verbosity():
+            print("Host {} in {} mode".format(hid, host.resourcestate))
         time.sleep(5)
 
     # Destroy all VM's
     virtualmachines = cs.map("virtual machines", zoneid=zone.id, listall=True)
-    for vmid, virtualmachine in virtualmachines.iteritems():
+    for vmid, virtualmachine in virtualmachines.items():
         try:
             cs.call("destroy virtual machine", id=vmid, expunge=True)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Destroy all Routers
     routers = cs.map("routers", zoneid=zone.id, listall=True)
-    for rid, router in routers.iteritems():
+    for rid, router in routers.items():
         try:
             cs.call("destroy router", id=rid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete system VM's
     systemvms = cs.map("system vms", zoneid=zone.id)
-    for svmid, svm in systemvms.iteritems():
+    for svmid, svm in systemvms.items():
         try:
             cs.call("destroy system vm", id=svmid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete hosts
-    for hid, host in hosts.iteritems():
+    for hid, host in hosts.items():
         try:
             cs.delete("host", id=hid, forced=force, forcedestroylocalstorage=force)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete ip-addresses
     ipaddresses = cs.map("public ip addresses", zoneid=zone.id, listall=True)
-    for ipid, ipaddress in ipaddresses.iteritems():
+    for ipid, ipaddress in ipaddresses.items():
         try:
             if not ipaddress.issourcenat:
                 cs.call("disassociate ip address", id=ipid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete networks
     networks = cs.map("networks", zoneid=zone.id)
-    for nid, network in networks.iteritems():
+    for nid, network in networks.items():
         try:
             cs.delete("network", id=nid, forced=force)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete physical networks
     physicalnetworks = cs.map("physical networks", zoneid=zone.id)
-    for pnid, pn in physicalnetworks.iteritems():
+    for pnid, pn in physicalnetworks.items():
         try:
             cs.delete("physical network", id=pnid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
-    # Delete volumnes
+    # Delete volumes
     volumes = cs.map("volumes", zoneid=zone.id, listall=True)
-    for vid, volume in volumes.iteritems():
+    for vid, volume in volumes.items():
         try:
             cs.delete("volume", id=vid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete templates
     templates = cs.map("templates", zoneid=zone.id, templatefilter="all")
-    for tid, template in templates.iteritems():
+    for tid, template in templates.items():
         try:
             if not (is_set(template, "crosszones") or is_set(template, "crossZones")):
                 cs.delete("template", id=tid, zoneid=zone.id)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete storage pools
     storagepools = cs.map("storage pools", zoneid=zone.id)
-    for spid, pool in storagepools.iteritems():
+    for spid, pool in storagepools.items():
         try:
             if pool.state != "Maintenance":
                 cs.call("enable storage maintenance", id=spid)
             cs.delete("storage pool", id=spid, forced=force)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete clusters
     clusters = cs.map("clusters", zoneid=zone.id)
-    for cid, cluster in clusters.iteritems():
+    for cid, cluster in clusters.items():
         try:
             cs.delete("cluster", id=cid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete vmwaredc's
     try:
         vmwaredcs = cs.map("vmware dcs", zoneid=zone.id)
-        for vmwaredc in vmwaredcs.itervalues():
+        for vmwaredc in vmwaredcs.values():
             try:
                 cs.call("remove vmware dc", id=vmwaredc.id, zoneid=zone.id)
-            except MiniCloudStackException, e:
+            except minicloudstack.MiniCloudStackException as e:
                 handle_exception(ignore, e)
-    except Exception, e:
+    except Exception as e:
         handle_exception(ignore, e)
     # Delete pods
     pods = cs.map("pods", zoneid=zone.id)
-    for pid, pod in pods.iteritems():
+    for pid, pod in pods.items():
         try:
             cs.delete("pod", id=pid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # Delete image stores
     imagestores = cs.map("image stores", zoneid=zone.id)
-    for isid, store in imagestores.iteritems():
+    for isid, store in imagestores.items():
         try:
             cs.delete("image store", id=isid)
-        except MiniCloudStackException, e:
+        except minicloudstack.MiniCloudStackException as e:
             handle_exception(ignore, e)
 
     # TODO: Security groups?
@@ -186,7 +187,7 @@ def delete_zone(cs, zone, force=False, ignore=False):
 
 
 def delete_zones(arguments):
-    cs = MiniCloudStack(arguments)
+    cs = minicloudstack.MiniCloudStack(arguments)
 
     zones = cs.map("zones")
 
@@ -196,19 +197,19 @@ def delete_zones(arguments):
     else:
         for candidate in arguments.name:
             found_id = None
-            for zid, zone in zones.iteritems():
+            for zid, zone in zones.items():
                 if candidate == zid or candidate == zone.name:
                     found_id = zid
                     break
             if found_id:
                 delete_zone_ids.append(found_id)
             else:
-                print "Warning: zone '{}' not found".format(candidate)
+                print("Warning: zone '{}' not found".format(candidate))
 
     if len(delete_zone_ids) == 0:
-        names = [z.name for z in zones.itervalues()]
+        names = [z.name for z in zones.values()]
         names.sort()
-        print "Please specify zone to delete ({})".format(", ".join(names))
+        print("Please specify zone to delete ({})".format(", ".join(names)))
         return
 
     for zoneid in delete_zone_ids:
@@ -218,7 +219,7 @@ def delete_zones(arguments):
 def main():
     parser = argparse.ArgumentParser(usage="Destroys zone(s) - WITH EVERYTHING IN THEM!!!")
 
-    add_arguments(parser)
+    minicloudstack.add_arguments(parser)
 
     parser.add_argument("-f", "--force", dest="force", action="store_true", default=False,
                         help="Force deletion of everything related to zone")
@@ -226,7 +227,7 @@ def main():
     parser.add_argument("-i", "--ignore", dest="ignore", action="store_true", default=False,
                         help="Ignore errors")
 
-    parser.add_argument("-v", "--verbose", action="count",
+    parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Increase output verbosity")
     parser.add_argument("--all", action="store_true", default=False,
                         help="Delete all zones")
@@ -235,17 +236,17 @@ def main():
 
     arguments = parser.parse_args()
 
-    set_verbosity(arguments.verbose)
+    minicloudstack.set_verbosity(arguments.verbose)
 
     try:
         delete_zones(arguments)
-    except MiniCloudStackException as e:
-        if get_verbosity() > 1:
+    except minicloudstack.MiniCloudStackException as e:
+        if minicloudstack.get_verbosity() > 1:
             raise e
         else:
-            print " - - - "
-            print "Error deleting zone:"
-            print e.message
+            print(" - - - ")
+            print("Error deleting zone:")
+            print(e.message)
 
 
 if __name__ == "__main__":

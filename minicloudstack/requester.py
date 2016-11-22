@@ -17,148 +17,48 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import print_function
+import base64
+import hashlib
+import hmac
+import requests
+import ssl
+import sys
+
+# Python 2 vs 3
 try:
-    import base64
-    import hashlib
-    import hmac
-    import itertools
-    import json
-    import requests
-    import ssl
-    import sys
-    import time
-    import urllib
-    import urllib2
+    from urllib.parse import quote_plus
+except ImportError:
+    from urllib import quote_plus
 
-    from datetime import datetime, timedelta
-    from requests_toolbelt import SSLAdapter
-    from urllib2 import HTTPError, URLError
-except ImportError, e:
-    print "Import error in %s : %s" % (__name__, e)
-    import sys
-    sys.exit()
-
+from datetime import datetime, timedelta
+from requests_toolbelt import SSLAdapter
 
 # Disable HTTPS verification warnings.
 from requests.packages import urllib3
 urllib3.disable_warnings()
 
 
-def logger_debug(logger, message):
-    if logger is not None:
-        logger.debug(message)
+def running_python2():
+    return sys.version_info.major < 3
 
 
-def writeError(msg):
-    sys.stderr.write(msg)
-    sys.stderr.write("\n")
-    sys.stderr.flush()
+def encode_as_string(data):
+    # Python 3 encode returns bytestring that requests does not like.
+    result = ""
+    for b in data.encode("utf-8"):
+        result += chr(b)
+    return result
 
 
-def login(url, username, password, domain="/", verifysslcert=False):
-    """
-    Login and obtain a session to be used for subsequent API calls
-    Wrong username/password leads to HTTP error code 531
-    """
-    args = {}
-
-    args["command"] = 'login'
-    args["username"] = username
-    args["password"] = password
-    args["domain"] = domain
-    args["response"] = "json"
-
-    sessionkey = ''
-    session = requests.Session()
-    session.mount('https://', SSLAdapter(ssl.PROTOCOL_TLSv1))
-
-    try:
-        resp = session.post(url, params=args, verify=verifysslcert)
-    except requests.exceptions.ConnectionError, e:
-        writeError("Connection refused by server: %s" % e)
-        return None, None
-
-    if resp.status_code == 200:
-        sessionkey = resp.json()['loginresponse']['sessionkey']
-    elif resp.status_code == 405:
-        writeError("Method not allowed, unauthorized access on URL: %s" % url)
-        session = None
-        sessionkey = None
-    elif resp.status_code == 531:
-        writeError("Error authenticating at %s using username: %s"
-                   ", password: %s, domain: %s" % (url, username, password,
-                                                   domain))
-        session = None
-        sessionkey = None
+def b64encode(data):
+    if running_python2():
+        return base64.encodestring(data)
     else:
-        resp.raise_for_status()
-
-    return session, sessionkey
+        return base64.encodebytes(data).decode('ascii')
 
 
-def logout(url, session):
-    if not session:
-        return
-    session.get(url, params={'command': 'logout'})
-
-
-def make_request_with_password(command, args, logger, url, credentials,
-                               verifysslcert=False):
-    error = None
-    args = args.copy()
-    username = credentials['username']
-    password = credentials['password']
-    domain = credentials['domain']
-
-    if not (username and password):
-        error = "Username and password cannot be empty"
-        result = None
-        return result, error
-
-    tries = 0
-    retry = True
-
-    while tries < 2 and retry:
-        sessionkey = credentials.get('sessionkey')
-        session = credentials.get('session')
-        tries += 1
-
-        # obtain a valid session if not supplied
-        if not (session and sessionkey):
-            session, sessionkey = login(url, username, password, domain,
-                                        verifysslcert)
-            if not (session and sessionkey):
-                return None, 'Authentication failed'
-            credentials['session'] = session
-            credentials['sessionkey'] = sessionkey
-
-        args['sessionkey'] = sessionkey
-
-        # make the api call
-        resp = session.get(url, params=args, verify=verifysslcert)
-        result = resp.text
-        logger_debug(logger, "Response received: %s" % resp.text)
-
-        if resp.status_code == 200:  # success
-            retry = False
-            break
-        if resp.status_code == 401:  # sessionkey is wrong
-            credentials['session'] = None
-            credentials['sessionkey'] = None
-            continue
-
-        if resp.status_code != 200 and resp.status_code != 401:
-            error_message = resp.headers.get('X-Description')
-            if not error_message:
-                error_message = resp.text
-            error = "{0}: {1}".format(resp.status_code, error_message)
-            result = None
-            retry = False
-
-    return result, error
-
-
-def make_request(command, args, logger, url, credentials, expires,
+def make_request(command, args, url, credentials, expires,
                  verifysslcert=False, signatureversion=3):
     result = None
     error = None
@@ -184,34 +84,27 @@ def make_request(command, args, logger, url, credentials, expires,
 
     for key in args.keys():
         value = args[key]
-        if isinstance(value, unicode):
-            value = value.encode("utf-8")
+        if running_python2():
+            if isinstance(value, unicode):
+                value = value.encode("utf-8")
+        elif isinstance(value, str):
+            value = encode_as_string(value)
         args[key] = value
         if not key:
             args.pop(key)
 
-    # try to use the apikey/secretkey method by default
-    # followed by trying to check if we're using integration port
-    # finally use the username/password method
-    if not credentials['apikey'] and not ("8096" in url):
-        try:
-            return make_request_with_password(command, args, logger, url,
-                                              credentials, verifysslcert)
-        except (requests.exceptions.ConnectionError, Exception), e:
-            return None, e
-
     def sign_request(params, secret_key):
-        request = zip(params.keys(), params.values())
+        request = list(zip(params.keys(), params.values()))
         request.sort(key=lambda x: x[0].lower())
         hash_str = "&".join(
             ["=".join(
                 [r[0].lower(),
-                 urllib.quote_plus(str(r[1]), safe="*").lower()
+                 quote_plus(str(r[1]), safe="*").lower()
                  .replace("+", "%20").replace("%3A", ":")]
             ) for r in request]
         )
-        return base64.encodestring(hmac.new(secret_key, hash_str,
-                                   hashlib.sha1).digest()).strip()
+        return b64encode(hmac.new(secret_key.encode("utf-8"), hash_str.encode("utf-8"),
+                                  hashlib.sha1).digest()).strip()
 
     args['apiKey'] = credentials['apikey']
     args["signature"] = sign_request(args, credentials['secretkey'])
@@ -221,7 +114,7 @@ def make_request(command, args, logger, url, credentials, expires,
 
     try:
         response = session.get(url, params=args, verify=verifysslcert)
-        logger_debug(logger, "Request sent: %s" % response.url)
+
         result = response.text
 
         if response.status_code == 200:  # success
@@ -231,105 +124,12 @@ def make_request(command, args, logger, url, credentials, expires,
         elif response.status_code != 200 and response.status_code != 401:
             error = "{0}: {1}".format(response.status_code,
                                       response.headers.get('X-Description'))
-    except requests.exceptions.ConnectionError, e:
+    except requests.exceptions.ConnectionError as e:
         return None, "Connection refused by server: %s" % e
-    except Exception, pokemon:
+    except Exception as pokemon:
         error = pokemon.message
 
-    logger_debug(logger, "Response received: %s" % result)
     if error is not None:
-        logger_debug(logger, "Error: %s" % (error))
         return result, error
 
     return result, error
-
-
-def monkeyrequest(command, args, isasync, asyncblock, logger, url,
-                  credentials, timeout, expires, verifysslcert=False,
-                  signatureversion=3):
-    response = None
-    error = None
-    logger_debug(logger, "======== START Request ========")
-    logger_debug(logger, "Requesting command=%s, args=%s" % (command, args))
-    response, error = make_request(command, args, logger, url,
-                                   credentials, expires, verifysslcert,
-                                   signatureversion)
-
-    logger_debug(logger, "======== END Request ========\n")
-
-    if error is not None and not response:
-        return response, error
-
-    def process_json(response):
-        try:
-            response = json.loads(response, "utf-8")
-        except ValueError, e:
-            logger_debug(logger, "Error processing json: %s" % e)
-            writeError("Error processing json: %s" % e)
-            response = None
-            error = e
-        return response
-
-    response = process_json(response)
-    if not response or not isinstance(response, dict):
-        return response, error
-
-    m = list(v for v in response.keys() if 'response' in v.lower())
-    if not m:
-        return response, 'Invalid response received: %s' % response
-
-    isasync = isasync and (asyncblock == "true" or asyncblock == "True")
-    responsekey = filter(lambda x: 'response' in x, response.keys())[0]
-
-    if isasync and 'jobid' in response[responsekey]:
-        jobid = response[responsekey]['jobid']
-        command = "queryAsyncJobResult"
-        request = {'jobid': jobid}
-        if not timeout:
-            timeout = 3600
-        timeout = int(timeout)
-        cursor = itertools.cycle([u'|', u'/', u'-', u'\\'])
-        while timeout > 0:
-            interval = 2
-            while interval > 0:
-                sys.stdout.write(u"%s\r" % cursor.next())
-                sys.stdout.flush()
-                time.sleep(0.1)
-                interval -= 0.1
-            timeout = timeout - 2
-            logger_debug(logger, "Job %s to timeout in %ds" % (jobid, timeout))
-
-            response, error = make_request(command, request, logger, url,
-                                           credentials, expires, verifysslcert)
-            if error and not response:
-                return response, error
-
-            response = process_json(response)
-            responsekeys = filter(lambda x: 'response' in x, response.keys())
-
-            if len(responsekeys) < 1:
-                continue
-
-            result = response[responsekeys[0]]
-            if "errorcode" in result or "errortext" in result:
-                return response, error
-
-            jobstatus = result['jobstatus']
-            if jobstatus == 2:
-                jobresult = result["jobresult"]
-                error = "\rAsync job %s failed\nError %s, %s" % (
-                        jobid, jobresult["errorcode"], jobresult["errortext"])
-                return response, error
-            elif jobstatus == 1:
-                sys.stdout.write(u"\r \n")
-                sys.stdout.flush()
-                return response, error
-            elif jobstatus == 0:
-                pass  # Job in progress
-            else:
-                logger_debug(logger, "We should not arrive here!")
-                sys.stdout.flush()
-
-        error = "Error: Async query timeout occurred for jobid %s" % jobid
-
-    return response, error

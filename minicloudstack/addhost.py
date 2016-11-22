@@ -17,10 +17,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import mcs as minicloudstack
-import baremetal
-
+from __future__ import print_function
 import argparse
+
+from . import mcs as minicloudstack
+from . import baremetal
 
 
 def add_host(cs, zone, pod, cluster, hypervisor, host_url, username, password, update):
@@ -40,7 +41,7 @@ def add_host(cs, zone, pod, cluster, hypervisor, host_url, username, password, u
                 password=password,
                 hypervisor=hypervisor
         )
-        print "Host created ({})".format(host.id)
+        print("Host created ({})".format(host.id))
 
     return host
 
@@ -60,7 +61,7 @@ def add_baremetal_host(cs, zone, pod, cluster, hypervisor, host_url, username, p
                     # Pick first switch if not specified
                     switches = cs.map("baremetal switches")
                     if len(switches) != 1:
-                        print "Error: This script only works if you have exactly one baremetal switch 'in the zone'"
+                        print("Error: This script only works if you have exactly one baremetal switch 'in the zone'")
                         return False
                     switchid, switch = switches.popitem()
                     switchid = switch.id
@@ -84,7 +85,7 @@ def add_baremetal_host(cs, zone, pod, cluster, hypervisor, host_url, username, p
                     hosttags=hosttags,
                     **additional
             )
-            print "Host created ({})".format(host.id)
+            print("Host created ({})".format(host.id))
             baremetal.add_baremetal_service_offering(cs, host)
     return host
 
@@ -104,7 +105,7 @@ def create_pod(cs, zone, podname, gateway, podcidr, mgmt_startip, mgmt_endip, up
                 netmask=podcidr.netmask().dotted(),
         )
 
-        print "Pod created {} ({})".format(pod.name, pod.id)
+        print("Pod created {} ({})".format(pod.name, pod.id))
     return pod
 
 
@@ -133,7 +134,7 @@ def add_cluster(cs, zone, pod, clustername, hypervisor, username, password, url,
                 hypervisor=hypervisor,
                 **additional
         )
-        print "Cluster created {} ({})".format(cluster.name, cluster.id)
+        print("Cluster created {} ({})".format(cluster.name, cluster.id))
 
     return cluster
 
@@ -144,16 +145,16 @@ def add_host_default(arguments):
 
     zone = cs.obj("list zones", name=arguments.zone)
     if minicloudstack.get_verbosity():
-        print "Found zone [{}]".format(zone.id)
+        print("Found zone [{}]".format(zone.id))
 
     pods = cs.map("pods", zoneid=zone.id)
     if len(pods) != 1:
-        print "Error: This script only works if you have exactly one pod 'in the zone'"
+        print("Error: This script only works if you have exactly one pod 'in the zone'")
         return False
 
     podid, pod = pods.popitem()
     if minicloudstack.get_verbosity():
-        print "Found pod {} [{}] in zone".format(pod.name, pod.id)
+        print("Found pod {} [{}] in zone".format(pod.name, pod.id))
 
     clusters = cs.map("clusters", zoneid=zone.id, podid=pod.id, hypervisor=arguments.hypervisor)
     if len(clusters) == 0:
@@ -164,7 +165,7 @@ def add_host_default(arguments):
         clusterid, cluster = clusters.popitem()
 
     if minicloudstack.get_verbosity():
-        print "Found cluster {} [{}] in pod".format(cluster.name, cluster.id)
+        print("Found cluster {} [{}] in pod".format(cluster.name, cluster.id))
 
     host_url = arguments.host
     hypervisor = arguments.hypervisor
@@ -183,13 +184,14 @@ def add_host_default(arguments):
     else:
         host = add_host(cs, zone, pod, cluster, hypervisor, host_url, username, password, update)
 
-    print "Host added [{}]".format(host.id)
+    print("Host added [{}]".format(host.id))
 
 
 def main():
     parser = argparse.ArgumentParser("Add a host to an existing zone")
 
-    parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase output verbosity")
 
     parser.add_argument("-z", "--zone", required=True, help="Name of zone to add host to")
     parser.add_argument("-ho", "--host", required=True, help="Hypervisor host to add to zone")
@@ -216,9 +218,9 @@ def main():
         if minicloudstack.get_verbosity() > 1:
             raise e
         else:
-            print " - - - "
-            print "Error adding host:"
-            print e.message
+            print(" - - - ")
+            print("Error adding host:")
+            print(e.message)
 
 
 if __name__ == "__main__":

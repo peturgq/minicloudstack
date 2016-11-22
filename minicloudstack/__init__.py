@@ -1,1 +1,1 @@
-from mcs import *
+from .mcs import *

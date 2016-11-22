@@ -17,8 +17,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import mcs as minicloudstack
+from __future__ import print_function
 import argparse
+
+from . import mcs as minicloudstack
 
 
 def add_baremetal_service_offering(cs, host):
@@ -88,13 +90,14 @@ def add_baremetal_advanced_switch(cs, ipaddress, username, password, switch_type
             username=username,
             password=password,
             type=switch_type)
-    print "Baremetal switch added ({})".format(switch.id)
+    print("Baremetal switch added ({})".format(switch.id))
     return switch
 
 
 def main():
     parser = argparse.ArgumentParser("minicloudstack baremetal")
-    parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase output verbosity")
     minicloudstack.add_arguments(parser)
 
     switch = parser.add_argument_group("Add Baremetal Advanced Switch", "Switch properties")
@@ -116,9 +119,9 @@ def main():
         if minicloudstack.get_verbosity() > 1:
             raise e
         else:
-            print " - - - "
-            print "Error:"
-            print e.message
+            print(" - - - ")
+            print("Error:")
+            print(e.message)
 
 
 if __name__ == "__main__":

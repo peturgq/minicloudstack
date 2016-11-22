@@ -18,10 +18,10 @@
 # under the License.
 
 from __future__ import print_function
-
-import minicloudstack
-
 import argparse
+
+from . import mcs as minicloudstack
+
 
 BASE_ISOLATED_NO = "DefaultIsolatedNetworkOfferingWithSourceNatService"
 DEFAULT_ISOLATED_NO = "DefaultIsolatedNetworkOfferingWithSourceNatServiceEgressEnabled"
@@ -149,7 +149,7 @@ def add_isolated_network_service_offering(cs, base_offering_name, new_offering_n
 def add_baremetal_shared_network_offering(cs):
     if get_offering(cs, BAREMETAL_SHARED_NO):
         if minicloudstack.get_verbosity():
-            print("{} already in place".format(new_offering_name))
+            print("{} already in place".format(BAREMETAL_SHARED_NO))
         return
 
     new_offering_dict = define_new_offering(BAREMETAL_SHARED_NO, BAREMETAL_SHARED_NO_DISPLAY,
@@ -245,7 +245,8 @@ def ensure_network_service_provider(cs, zone, phys_netw_id, phys_netw_service_pr
 def main():
     parser = argparse.ArgumentParser("Adds default network offerings if they have not been installed")
 
-    parser.add_argument("-v", "--verbose", action="count", help="Increase output verbosity")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase output verbosity")
 
     minicloudstack.add_arguments(parser)
 

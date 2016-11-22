@@ -18,14 +18,19 @@
 # under the License.
 
 from __future__ import print_function
-import mcs as minicloudstack
-import networkoffering
-import addhost
-import baremetal
-
 import argparse
 import re
-from urlparse import urlparse, parse_qs
+
+# Python 2 vs 3
+try:
+    from urllib.parse import urlparse, parse_qs
+except ImportError:
+    from urlparse import urlparse, parse_qs
+
+from . import mcs as minicloudstack
+from . import networkoffering
+from . import addhost
+from . import baremetal
 
 RE_VLAN_RANGE = re.compile("^([0-9]{1,4})-([0-9]{1,4})$")
 
@@ -526,7 +531,9 @@ def create_all(arguments):
 def main():
     parser = argparse.ArgumentParser("Create a new zone")
 
-    parser.add_argument("-v",  "--verbose", action="count", help="Increase output verbosity")
+    parser.add_argument("-v", "--verbose", action="count", default=0,
+                        help="Increase output verbosity")
+
     parser.add_argument("-up", "--update", action="store_true", default=False, help="Try to add missing components")
 
     mgmtnet = parser.add_argument_group("Management Network (required)", "Management servers (pod network)")
