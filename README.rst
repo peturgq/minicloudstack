@@ -9,32 +9,38 @@ Includes helper scripts to work with zones and hosts and helps you get started w
 
 Easiest is to set the following environment variables:
 
-    export CS_API_URL="http://mycloudstackapi.example.com/"
-    export CS_API_KEY="1235..."
-    export CS_SECRET_KEY="abcdef..."
+```
+export CS_API_URL="http://mycloudstackapi.example.com/"
+export CS_API_KEY="1235..."
+export CS_SECRET_KEY="abcdef..."
+```
 
 Or override using built in arguments.
 
 
 Example usage
 -------------
-    # 1) Set your environment variables
-    # 2) Start python (or ipython).
-    import minicloudstack
-    mcs = minicloudstack.MiniCloudStack()
-    for template in mcs.list("templates", templatefilter="featured"):
-        print template.id, template.name
+* pip install minicloudstack
+* set your env variables
+* Start python (or ipython).
+
+```
+import minicloudstack
+mcs = minicloudstack.MiniCloudStack()
+for template in mcs.list("templates", templatefilter="featured"):
+    print template.id, template.name
+```
 
 
 Helper scripts
 --------------
 Also provider are the following scripts that can be useful:
 
-    mcs-createzone
-    mcs-deletezone
-    mcs-registertemplate
-    mcs-addhost
-    minicloudstack
+* mcs-createzone
+* mcs-deletezone
+* mcs-registertemplate
+* mcs-addhost
+* minicloudstack
 
 Start them with --help for detailed instructions.
 
