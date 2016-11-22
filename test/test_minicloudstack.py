@@ -4,7 +4,7 @@ import minicloudstack
 import unittest
 
 
-class MiniCloudstack(unittest.TestCase):
+class TestMiniCloudStack(unittest.TestCase):
     def test_ipaddress(self):
         self.check_ip("0.0.0.0")
         self.check_ip("255.255.255.255")
@@ -30,8 +30,6 @@ class MiniCloudstack(unittest.TestCase):
         self.check_all(ip, 32)
         self.check_all(ip, 22)
         self.check_all(ip, 31)
-
-        self.assertRaises
 
     def check_all(self, ip, significant_bits):
         firstip = lastip = False
