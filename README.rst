@@ -4,7 +4,8 @@ minicloudstack
 Makes it easy to connect to Apache CloudStack.  Tested with version 4.2 and later.
 
 For more information on CloudStack see:
-.. CloudStack: https://cloudstack.apache.org/
+
+.. _CloudStack: https://cloudstack.apache.org/
 
 Includes helper scripts to work with zones and hosts and helps you get started with your own scripts.
 
@@ -13,8 +14,8 @@ Alternatives
 This library makes it easy to create quick utilities for Operational and Development purposes.
 For an interactive shell you should try cloudmonkey or shell scripting you can try cs.
 
-.. cloudmonkey: https://pypi.python.org/pypi/cloudmonkey/
-.. cs: https://pypi.python.org/pypi/cs
+.. _cloudmonkey: https://pypi.python.org/pypi/cloudmonkey/
+.. _cs: https://pypi.python.org/pypi/cs
 
 Installation
 ------------
@@ -56,9 +57,10 @@ Start them with --help for detailed instructions.
 
 Background
 ----------
-These scripts were created by Greenqloud (see: https://www.greenqloud.com/ ).
+These scripts were created by Greenqloud when developing Qstack.  See:
 
-The scripts were used in development of Qstack ( see: https://qstack.com/ ) but can be used with any CloudStack server.
+.. _Greenqloud: https://www.greenqloud.com/
+.. _Qstack: https://qstack.com/
 
 We hope you find them useful!
 
