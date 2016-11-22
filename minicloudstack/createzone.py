@@ -17,6 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import print_function
 import mcs as minicloudstack
 import networkoffering
 import addhost
@@ -36,7 +37,7 @@ def enable_networkserviceproviders(cs, pn, providers, update):
         for find_nsp in nsps.itervalues():
             if find_nsp.name == provider:
                 if minicloudstack.get_verbosity():
-                    print "Enabling service provider {} for physical network {}".format(find_nsp.name, pn.id)
+                    print("Enabling service provider {} for physical network {}".format(find_nsp.name, pn.id))
                 nsp = find_nsp
                 break
 
@@ -51,32 +52,32 @@ def enable_networkserviceproviders(cs, pn, providers, update):
                     servicelist=services,
             )
         elif not nsp:
-            print "Warning: Failed to enable service provider {} on physical network {}".format(provider, pn.id)
+            print("Warning: Failed to enable service provider {} on physical network {}".format(provider, pn.id))
             continue
 
         if nsp.state == "Enabled":
             if minicloudstack.get_verbosity():
-                print "Network service provider {} already enabled".format(provider)
+                print("Network service provider {} already enabled".format(provider))
             continue
 
         if minicloudstack.get_verbosity():
-            print "Enabling network service provider {}".format(provider)
+            print("Enabling network service provider {}".format(provider))
 
         if nsp.name in ["VirtualRouter", "VpcVirtualRouter", "VirtualRouterSG"]:
             vre = minicloudstack.obj_if_exists(cs, "virtual router elements", nspid=nsp.id)
             if not vre:
-                print "Creating virtual router element {} not found for nspid={}".format(provider, nsp.id)
+                print("Creating virtual router element {} not found for nspid={}".format(provider, nsp.id))
                 vre = cs.obj("create virtual router element", nspid=nsp.id)
 
             cs.obj("configure virtual router element", id=vre.id, enabled=True)
         elif nsp.name == "InternalLbVm":
             lbe = minicloudstack.obj_if_exists(cs, "internal load balancer elements", nspid=nsp.id)
             if not lbe:
-                print "Warning: internal load balancer element not found for nspid={}".format(nsp.id)
+                print("Warning: internal load balancer element not found for nspid={}".format(nsp.id))
                 continue
             cs.obj("configure internal load balancer element", id=lbe.id, enabled=True)
         else:
-            print "Warning: Unsupported network service provider '{}'".format(nsp.name)
+            print("Warning: Unsupported network service provider '{}'".format(nsp.name))
 
         # Enable the service provider itself.
         cs.call("update network service provider", id=nsp.id, state="Enabled")
@@ -95,7 +96,7 @@ def add_traffictype(cs, pnid, attrs, update):
             if match:
                 return
     if minicloudstack.get_verbosity():
-        print "Adding traffictype to '{}': {}".format(pnid, attrs)
+        print("Adding traffictype to '{}': {}".format(pnid, attrs))
     cs.obj("add traffic type", physicalnetworkid=pnid, **attrs)
 
 
@@ -142,7 +143,7 @@ def create_physicalnetwork(cs, zone, pn, name, hyperv, adv_netw, enable_public, 
                 broadcastdomainrange=broadcast,
                 **additional
         )
-        print "Physical network created {} ({})".format(pn.name, pn.id)
+        print("Physical network created {} ({})".format(pn.name, pn.id))
 
     service_providers = []
     add_virtual_router = True
@@ -195,11 +196,11 @@ def create_physicalnetworks(cs, zone, hyperv, adv_netw, mgmt_vlan, public_vlan, 
                 pn1 = tmp
 
             if minicloudstack.get_verbosity():
-                print "Found existing objects '{}' with ids '{}' and '{}".format(type, key1, key2)
+                print("Found existing objects '{}' with ids '{}' and '{}".format(type, key1, key2))
         elif len(pns.keys()) == 1:
             key1, pn1 = pns.popitem()
         else:
-            print "Warning: too many physical networks already!"
+            print("Warning: too many physical networks already!")
             return
 
     if adv_netw and hyperv == "kvm":
@@ -232,7 +233,7 @@ def create_network(cs, zone, pn, name, hyperv, update):
             networkoffering.add_network_offerings(cs)
             network_offering = cs.obj("list network offerings", name=offering_name)
         if minicloudstack.get_verbosity():
-            print "Found network offering {} [{}]".format(offering_name, network_offering.id)
+            print("Found network offering {} [{}]".format(offering_name, network_offering.id))
 
         network = cs.obj(
                 "create network",
@@ -244,7 +245,7 @@ def create_network(cs, zone, pn, name, hyperv, update):
                 vlan="untagged",
         )
 
-        print "Network created {} ({})".format(network.name, network.id)
+        print("Network created {} ({})".format(network.name, network.id))
     return network
 
 
@@ -303,7 +304,7 @@ def create_zone(cs, name, dnsserver, internaldns, advanced_networking, guestcidr
         )
         if hyperv == "baremetal":
             cs.call("update zone", id=zone.id, dhcpprovider="ExternalDhcpServer")
-        print "Zone created ({})".format(zone.id)
+        print("Zone created ({})".format(zone.id))
 
     return zone
 
@@ -321,7 +322,7 @@ def add_vmwaredc(cs, zone, datacenter, vcenter, username, password, update):
                 username=username,
                 password=password
         )
-        print "VMware DC added {} ({})".format(vmwaredc.name, vmwaredc.id)
+        print("VMware DC added {} ({})".format(vmwaredc.name, vmwaredc.id))
 
     return vmwaredc
 
@@ -331,7 +332,7 @@ def get_secondary_storage_url_details(url):
     query_string = o.query
     # Flatten out the key values to get single values from parse_qs:
     qs_dict = dict((k, v if len(v) > 1 else v[0])
-        for k, v in parse_qs(query_string).iteritems())
+        for k, v in parse_qs(query_string).items())
     return qs_dict
 
 
@@ -340,7 +341,7 @@ def get_primary_storage_url_details(url):
     query_string = o.query
     # Flatten out the key values to get single values from parse_qs:
     qs_list = []
-    for k, v in parse_qs(query_string).iteritems():
+    for k, v in parse_qs(query_string).items():
         if len(v) == 1:
             v = v[0]
         qs_list.append({k: v})
@@ -365,7 +366,7 @@ def create_storagepool(cs, zone, pod, cluster, hypervisor, storagepool_name, pri
                 url=primarystorage_url,
                 details=primarystorage_details
         )
-        print "Primary storage (storage pool) created ({})".format(storagepool.id)
+        print("Primary storage (storage pool) created ({})".format(storagepool.id))
 
     return storagepool
 
@@ -393,7 +394,7 @@ def create_imagestore(cs, zone, imagestore_name, secondarystorage, update):
             params['details'] = imagestore_details
 
         imagestore = cs.obj("add image store", **params)
-        print "Secondary storage (image store) created ({})".format(imagestore.id)
+        print("Secondary storage (image store) created ({})".format(imagestore.id))
 
     return imagestore
 
@@ -402,7 +403,7 @@ def enable_securitygroups(cs, zone):
     try:
         cs.call("change zone security group status", zoneid=zone.id, enabled=True)
     except minicloudstack.MiniCloudStackException:
-        print "Warning: Failed to enable security groups for zone - you need to do it manually in the DB"
+        print("Warning: Failed to enable security groups for zone - you need to do it manually in the DB")
 
 
 def prevent_broadcast_ip(cidr, ip):
@@ -410,7 +411,7 @@ def prevent_broadcast_ip(cidr, ip):
     if ip.dotted() == cidr.lastip().dotted():
         result = ip.new_adding(-1)
         if minicloudstack.get_verbosity() > 1:
-            print "Preventing collision with broadcast IP {} -> {}".format(ip.dotted(), result.dotted())
+            print("Preventing collision with broadcast IP {} -> {}".format(ip.dotted(), result.dotted()))
     return result
 
 
@@ -455,12 +456,12 @@ def create_all(arguments):
     vmpublic_endip = prevent_broadcast_ip(pubnet, vmpublic_endip)
 
     if minicloudstack.get_verbosity():
-        print "Mgmt network {}-{} [{} gw: {}] VLAN: '{}'".format(
+        print("Mgmt network {}-{} [{} gw: {}] VLAN: '{}'".format(
                 mgmt_startip.dotted(), mgmt_endip.dotted(),
-                mgmtnet.cidr(), mgmtgateway.dotted(), arguments.mgmtvlan)
-        print "VM public network {}-{} [{} gw: {}] VLAN: '{}'".format(
+                mgmtnet.cidr(), mgmtgateway.dotted(), arguments.mgmtvlan))
+        print("VM public network {}-{} [{} gw: {}] VLAN: '{}'".format(
                 vmpublic_startip.dotted(), vmpublic_endip.dotted(),
-                pubnet.cidr(), pubgateway.dotted(), arguments.pubvlan)
+                pubnet.cidr(), pubgateway.dotted(), arguments.pubvlan))
 
     guestcidr = minicloudstack.IpCidr(arguments.guestcidr)
 
@@ -601,9 +602,9 @@ def main():
         if minicloudstack.get_verbosity() > 1:
             raise e
         else:
-            print " - - - "
-            print "Error creating zone:"
-            print e.message
+            print(" - - - ")
+            print("Error creating zone:")
+            print(e.message)
 
 
 if __name__ == "__main__":

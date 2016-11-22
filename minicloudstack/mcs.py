@@ -268,11 +268,11 @@ class MiniCloudStack(object):
         :return: args  unchanged but list of map objects flattened out to item[index].property=stuff format
         """
         result = {}
-        for k, v in args.iteritems():
+        for k, v in args.items():
             if isinstance(v, list):
                 if len(v) > 0 and isinstance(v[0], dict):
                     for index, item in enumerate(v):
-                        for ik, iv in item.iteritems():
+                        for ik, iv in item.items():
                             new_name = "{arg}[{index}].{field}".format(arg=k, index=index, field=ik)
                             result[new_name] = iv
                 else:
@@ -280,7 +280,7 @@ class MiniCloudStack(object):
                         result[k] = ",".join(v)
             elif isinstance(v, dict):
                 index=0
-                for ik,iv in v.iteritems():
+                for ik,iv in v.items():
                     key_param = "{arg}[{index}].key".format(arg=k, index=index)
                     result[key_param] = ik
                     value_param = "{arg}[{index}].value".format(arg=k, index=index)
@@ -343,7 +343,7 @@ def peel(result, dotted):
         item = item.lower()
         found = False
         obj = None
-        for current_key, current_value in current.iteritems():
+        for current_key, current_value in current.items():
             if current_key.lower() == item:
                 obj = current_value
                 found = True
