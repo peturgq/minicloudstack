@@ -3,44 +3,53 @@ minicloudstack
 
 Makes it easy to connect to Apache CloudStack.  Tested with version 4.2 and later.
 
-See: https://cloudstack.apache.org/
+For more information on CloudStack see:
+.. CloudStack: https://cloudstack.apache.org/
 
 Includes helper scripts to work with zones and hosts and helps you get started with your own scripts.
 
-Easiest is to set the following environment variables:
+Alternatives
+------------
+This library makes it easy to create quick utilities for Operational and Development purposes.
+For an interactive shell you should try cloudmonkey or shell scripting you can try cs.
 
-```
-export CS_API_URL="http://mycloudstackapi.example.com/"
-export CS_API_KEY="1235..."
-export CS_SECRET_KEY="abcdef..."
-```
+.. cloudmonkey: https://pypi.python.org/pypi/cloudmonkey/
+.. cs: https://pypi.python.org/pypi/cs
 
-Or override using built in arguments.
+Installation
+------------
+    pip install minicloudstack
 
 
-Example usage
--------------
-* pip install minicloudstack
-* set your env variables
-* Start python (or ipython).
+Quickstart
+----------
+Export the following environment variables (alternatively arguments can be used):
 
-```
-import minicloudstack
-mcs = minicloudstack.MiniCloudStack()
-for template in mcs.list("templates", templatefilter="featured"):
-    print template.id, template.name
-```
+.. code:: bash
+    export CS_API_URL="http://mycloudstackapi.example.com/"
+    export CS_API_KEY="1235..."
+    export CS_SECRET_KEY="abcdef..."
+
+
+Start your python shell (python or ipython).
+
+.. code:: python
+    import minicloudstack
+    mcs = minicloudstack.MiniCloudStack()
+    for template in mcs.list("templates", templatefilter="featured"):
+        print template.id, template.name
 
 
 Helper scripts
 --------------
 Also provided are the following scripts that can be useful:
 
-* mcs-createzone
-* mcs-deletezone
-* mcs-registertemplate
-* mcs-addhost
-* minicloudstack
+.. code:: bash
+    mcs-createzone
+    mcs-deletezone
+    mcs-registertemplate
+    mcs-addhost
+    minicloudstack
 
 Start them with --help for detailed instructions.
 
