@@ -52,6 +52,7 @@ Also provided are the following scripts that can be useful:
     mcs-deletezone
     mcs-registertemplate
     mcs-addhost
+    mcs-volume
     minicloudstack
 
 Start them with --help for detailed instructions.

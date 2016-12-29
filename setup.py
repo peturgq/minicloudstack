@@ -10,7 +10,7 @@ with open(path.join(here, 'README.rst')) as f:
 
 setup(
     name='minicloudstack',
-    version='1.0.2',
+    version='1.0.3',
     url='https://github.com/greenqloud/minicloudstack',
     author='Greenqloud',
     description='Minimal CloudStack Access Library and Utilities',
@@ -39,5 +39,6 @@ setup(
         'mcs-deletezone = minicloudstack.deletezone:main',
         'mcs-registertemplate = minicloudstack.registertemplate:main',
         'mcs-addhost = minicloudstack.addhost:main',
+        'mcs-volume = minicloudstack.volume:main',
     ]},
 )
