@@ -59,7 +59,7 @@ def out_debug(output):
         print(output)
 
 
-def result(exitcode, status, message, device=None, volume=None):
+def cmd_result(exitcode, status, message, device=None, volume=None):
     r = {
         "status": status,
         "message": message
@@ -73,18 +73,23 @@ def result(exitcode, status, message, device=None, volume=None):
     return exitcode
 
 
-def success(message=None, device=None, volume=None):
+def cmd_success(message=None, device=None, volume=None):
     message = message or "Action completed successfully"
     out_info("Success: {} ({})".format(message, device or volume or "<empty>"))
-    return result(0, "Success", message, device, volume)
+    return cmd_result(0, "Success", message, device, volume)
 
 
-def error(message):
+def cmd_error(message):
     out_error(message)
-    return result(1, "Failure", message)
+    return cmd_result(1, "Failure", message)
 
 
 def shell(cmd):
+    """
+    Execute shell command
+    :param cmd: command with arguments
+    :return: if successful output of command (or OK) - empty response on failure
+    """
     out_debug("shell: '{}'".format(cmd))
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
     stdout, stderr = p.communicate()
@@ -103,6 +108,7 @@ def shell(cmd):
 def device_id_to_name(device_id):
     """
     Tries to come up with educated guess of the device name from CloudStack device-id.
+    Warning: Must be run from within the VM being attached to to work.
     :param device_id: CloudStack device-id
     :return: physical device name
     """
@@ -177,11 +183,11 @@ def format_disk_if_required(device_name, file_system):
 def size_in_gigabytes(s):
     """
     Convert disk size from human readable (1000m, 1t) to gigabytes ( 2000m -> 2 )
+    Returns 1 as minimum.
     :param s: human readable disk size
     :return: integer number of gigabytes (at least 1)
     """
-    s = s.lower()
-    factor = 1
+    s = str(s).lower()
     if s.endswith("m"):
         factor = 1000 ** 2
         s = s[:-1]
@@ -199,7 +205,104 @@ def size_in_gigabytes(s):
     return max(int(gb), 1)
 
 
+def create(mcs, size, vm_id=None, zone_id=None, attach=False):
+    """
+    Create volume.  You need to provide either 'vm_id' or 'zone_id' to create the volume
+    in the correct place.
+    :param mcs: MiniCloudStack instance with valid connection
+    :param size: examples '10G', '1t'
+    :param vm_id: id of virtual machine
+    :param zone_id: id of zone
+    :param attach: If True and 'vm_id' is provided. Attaches volume automatically
+    :return: volume object
+    """
+    gigabytes = size_in_gigabytes(size)
+    if not vm_id and not zone_id:
+        raise minicloudstack.MiniCloudStackException("Missing vm_id or zone_id")
+    if attach and not vm_id:
+        raise minicloudstack.MiniCloudStackException("Cannot attach a volume without vm_id")
+    # Get disk offering (using the first customizable found).
+    disk_offering = None
+    for do in mcs.list("disk offerings"):
+        if do.iscustomized and do.displayoffering:
+            disk_offering = do
+            break
+    if not disk_offering:
+        raise minicloudstack.MiniCloudStackException("Could not find customizable disk offering")
+
+    if not zone_id:
+        # Find zone.
+        vms = mcs.list("virtual machines", id=vm_id)
+        if len(vms) != 1:
+            raise minicloudstack.MiniCloudStackException("Can't figure out zone of virtual machine {}".format(vm_id))
+        vm = vms[0]
+        zone_id = vm.zoneid
+    new_vol = mcs.obj("create volume", zoneid=zone_id, diskofferingid=disk_offering.id, size=gigabytes)
+    if attach:
+        new_vol = mcs.obj("attach volume", id=new_vol.id, virtualmachineid=vm_id)
+    return new_vol
+
+
+def mount(mcs, volume, directory, fs_type="ext4"):
+    """
+    Mount volume to local machine directory 'directory'. Volume is formatted if required with fs 'fs_type'.
+    Warning: Assumes this volume has already been attached to current VM.  Use 'create_volume' with attach=True.
+    :param mcs: MiniCloudStack instance with valid connection
+    :param volume: volume object (e.g. from 'create_volume')
+    :param directory: Folder to mount to (created if necessary)
+    :param fs_type: filesystem to format the disk with if not formatted
+    """
+    device = device_id_to_name(volume.deviceid)
+    if not format_disk_if_required(device, fs_type):
+        raise minicloudstack.MiniCloudStackException(
+            "Failed to format disk on {} with fs {}".format(device, fs_type))
+
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    if not shell("mount {device} {directory}".format(device=device, directory=directory)):
+        raise minicloudstack.MiniCloudStackException(
+            "Failed to mount device {} to directory {}".format(device, directory))
+
+
+def unmount(mcs, directory, delete_after=True):
+    """
+    Unmount directory.  This is the reverse action of 'mount'
+    :param mcs: MiniCloudStack instance with valid connection
+    :param directory: Folder to unmount
+    :param delete_after: True if you want directory to be deleted after unmounting
+    """
+    if not shell("umount {directory}".format(directory=directory)):
+        raise minicloudstack.MiniCloudStackException(
+            "Failed to unmount directory {}".format(directory))
+
+    if delete_after:
+        os.rmdir(directory)
+
+
+def delete(mcs, volume_id, detach=True):
+    """
+    Delete volume.  This is an irreversible action.
+    :param mcs: MiniCloudStack instance with valid connection
+    :param volume_id: id of volume
+    :param detach: True if volume needs to be detached first.
+    :return:
+    """
+    if detach:
+        mcs.call("detach volume", id=volume_id)
+    mcs.call("delete volume", id=volume_id)
+
+
 def find_cloudstack_volume(mcs, vm_id, device_id=None, volume_id=None):
+    """
+    Find a CloudStack volume that is mounted to 'vm_id' or safe to re-mount.
+    You need to provide either 'device_id' or 'volume_id'.
+    :param mcs: MiniCloudStack instance with valid connection
+    :param vm_id: id of virtual machine
+    :param device_id: id of device
+    :param volume_id: id of volume
+    :return: volume object or 'None'
+    """
     volume = None
     for v in mcs.list("volumes"):
         attached_vm = getattr(v, "virtualmachineid", vm_id)
@@ -215,7 +318,7 @@ def find_cloudstack_volume(mcs, vm_id, device_id=None, volume_id=None):
     return volume
 
 
-def is_json_options(s):
+def cmd_is_json_options(s):
     try:
         options = json.loads(s)
         return isinstance(options, dict)
@@ -223,10 +326,10 @@ def is_json_options(s):
         return False
 
 
-def parse_options(s):
+def cmd_parse_options(s):
     fstype = "ext4"
     volumeid = None
-    if not is_json_options(s):
+    if not cmd_is_json_options(s):
         return s, fstype
 
     options = json.loads(s)
@@ -238,62 +341,45 @@ def parse_options(s):
     return volumeid, fstype
 
 
-def init(mcs, args):
-    return success("Initialized")
+def cmd_init(mcs, args):
+    return cmd_success("Initialized")
 
 
-def create(mcs, args):
+def cmd_create(mcs, args):
     vm_id = args.vmid
-    if is_json_options(args.options):
+    if cmd_is_json_options(args.options):
         options = json.loads(args.options)
         size = options.get("size", "1g")
     else:
         size = args.options
-    gigabytes = size_in_gigabytes(size)
-    out_info("Creating volume of size {}g in zone of VM {}...".format(gigabytes, vm_id))
+    out_info("Creating volume of size {} in zone of VM {}...".format(size, vm_id))
     try:
-        # Get disk offering (using the first customizable found).
-        disk_offering = None
-        for do in mcs.list("disk offerings"):
-            if do.iscustomized and do.displayoffering:
-                disk_offering = do
-                break
-        if not disk_offering:
-            return error("Could not find customizable disk offering")
-
-        # Find zone.
-        vms = mcs.list("virtual machines", id=vm_id)
-        if len(vms) != 1:
-            return error("Can't figure out zone of virtual machine {}".format(vm_id))
-        vm = vms[0]
-        out_info("Creating volume using disk offering {} in zone {}...".format(
-            disk_offering.id, vm.zonename))
-        new_vol = mcs.obj("create volume", zoneid=vm.zoneid, diskofferingid=disk_offering.id, size=gigabytes)
-        return success("Created volume", volume=new_vol.id)
+        vol_id = create(mcs, size, vm_id=vm_id)
+        return cmd_success("Created volume", volume=vol_id)
     except minicloudstack.MiniCloudStackException as e:
-        return error("Volume create failed: {}".format(e))
+        return cmd_error("Volume create failed: {}".format(e))
 
 
-def delete(mcs, args):
-    volume_id, _ = parse_options(args.options)
+def cmd_delete(mcs, args):
+    volume_id, _ = cmd_parse_options(args.options)
     out_info("Deleting volume {}...".format(volume_id))
     try:
         mcs.call("delete volume", id=volume_id)
-        return success("Deleted volume", volume=volume_id)
+        return cmd_success("Deleted volume", volume=volume_id)
     except minicloudstack.MiniCloudStackException as e:
-        return error("Volume create failed: {}".format(e))
+        return cmd_error("Volume create failed: {}".format(e))
 
 
-def attach(mcs, args):
-    volume_id, _ = parse_options(args.options)
+def cmd_attach(mcs, args):
+    volume_id, _ = cmd_parse_options(args.options)
     if not volume_id:
-        return error("missing volumeID")
+        return cmd_error("missing volumeID")
     vm_id = args.vmid
     out_info("Attaching device for volume {} to VM {}...".format(volume_id, vm_id))
     try:
         volume = find_cloudstack_volume(mcs, vm_id, volume_id=volume_id)
         if not volume:
-            return error("No matching volume found")
+            return cmd_error("No matching volume found")
 
         if getattr(volume, "virtualmachineid", vm_id) != vm_id:
             # Already attached to another stopped VM.
@@ -302,15 +388,15 @@ def attach(mcs, args):
         if not hasattr(volume, "deviceid"):
             volume = mcs.obj("attach volume", id=volume_id, virtualmachineid=vm_id)
         device_name = device_id_to_name(volume.deviceid)
-        return success("Attached device successfully", device=device_name)
+        return cmd_success("Attached device successfully", device=device_name)
     except minicloudstack.MiniCloudStackException as e:
-        return error("Device attach failed: {}".format(e))
+        return cmd_error("Device attach failed: {}".format(e))
 
 
-def detach(mcs, args):
+def cmd_detach(mcs, args):
     device = args.device
     if not is_block_device(device):
-        return error("Device {} is not a block device", device)
+        return cmd_error("Device {} is not a block device".format(device))
     device_id = device_name_to_id(device)
     vm_id = args.vmid
     out_info("Detaching device {} [{}] from VM {}...".format(device, device_id, vm_id))
@@ -318,52 +404,52 @@ def detach(mcs, args):
     try:
         volume = find_cloudstack_volume(mcs, vm_id, device_id=device_id)
         if not volume:
-            return error("Volume not found while detaching device {} [{}] from VM {}".format(
+            return cmd_error("Volume not found while detaching device {} [{}] from VM {}".format(
                 device, device_id, vm_id))
 
         out_info("Detaching volume [{}]".format(volume.id))
         mcs.call("detach volume", id=volume.id)
-        return success("Detached device successfully", volume=volume.id)
+        return cmd_success("Detached device successfully", volume=volume.id)
     except minicloudstack.MiniCloudStackException as e:
-        return error("Volume detach failed: {}".format(e))
+        return cmd_error("Volume detach failed: {}".format(e))
 
 
-def mount(mcs, args):
+def cmd_mount(mcs, args):
     directory = args.target
     device = args.device
-    volume_id, fs_type = parse_options(args.options)
+    volume_id, fs_type = cmd_parse_options(args.options)
     vm_id = args.vmid
     if not volume_id:
-        return error("missing volumeID")
+        return cmd_error("missing volumeID")
 
     volume = find_cloudstack_volume(mcs, vm_id, volume_id=volume_id)
     if not volume:
-        return error("No matching volume found while mounting")
+        return cmd_error("No matching volume found while mounting")
 
     out_info("Mounting {} to {}".format(directory, device))
     if not format_disk_if_required(device, fs_type):
-        return error("Failed to format disk")
+        return cmd_error("Failed to format disk")
 
     if not os.path.exists(directory):
         out_debug("Creating directory {}".format(directory))
         os.makedirs(directory)
 
     if not shell("mount {device} {directory}".format(device=device, directory=directory)):
-        return error("Failed to mount device")
+        return cmd_error("Failed to mount device")
 
-    return success("Volume mounted successfully for {}".format(device))
+    return cmd_success("Volume mounted successfully for {}".format(device))
 
 
-def unmount(mcs, args):
+def cmd_unmount(mcs, args):
     directory = args.volume
 
     if not shell("umount {directory}".format(directory=directory)):
-        return error("Failed to unmount device")
+        return cmd_error("Failed to unmount directory")
 
     out_info("Removing mount directory {}".format(directory))
     os.rmdir(directory)
 
-    return success("Volume unmounted successfully: {}".format(directory))
+    return cmd_success("Volume unmounted successfully: {}".format(directory))
 
 
 def main():
@@ -381,33 +467,33 @@ def main():
                                      help="<command> --help for command arguments")
 
     init_parser = commands.add_parser("init", help="Initialize")
-    init_parser.set_defaults(func=init)
+    init_parser.set_defaults(func=cmd_init)
 
     attach_parser = commands.add_parser("create", help="Create volume")
     attach_parser.add_argument("options", help="size (in GB or options in json format)")
-    attach_parser.set_defaults(func=create)
+    attach_parser.set_defaults(func=cmd_create)
 
     attach_parser = commands.add_parser("delete", help="Delete volume")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
-    attach_parser.set_defaults(func=delete)
+    attach_parser.set_defaults(func=cmd_delete)
 
     attach_parser = commands.add_parser("attach", help="Attach volume")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
-    attach_parser.set_defaults(func=attach)
+    attach_parser.set_defaults(func=cmd_attach)
 
     attach_parser = commands.add_parser("detach", help="Detach volume")
     attach_parser.add_argument("device", help="Mount device")
-    attach_parser.set_defaults(func=detach)
+    attach_parser.set_defaults(func=cmd_detach)
 
     attach_parser = commands.add_parser("mount", help="Mount volume")
     attach_parser.add_argument("target", help="Target mount directory")
     attach_parser.add_argument("device", help="Mount device")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
-    attach_parser.set_defaults(func=mount)
+    attach_parser.set_defaults(func=cmd_mount)
 
     attach_parser = commands.add_parser("unmount", help="Unmount volume")
     attach_parser.add_argument("volume", help="Volume to unmount")
-    attach_parser.set_defaults(func=unmount)
+    attach_parser.set_defaults(func=cmd_unmount)
 
     args = parser.parse_args()
     if not args.command:
@@ -429,7 +515,7 @@ def main():
     except Exception as e:
         error_message = "EXCEPTION: {}".format(e)
         logging.error(error_message)
-        return error(error_message)
+        return cmd_error(error_message)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ with open(path.join(here, 'README.rst')) as f:
 
 setup(
     name='minicloudstack',
-    version='1.0.4',
+    version='1.0.5',
     url='https://github.com/greenqloud/minicloudstack',
     author='Greenqloud',
     description='Minimal CloudStack Access Library and Utilities',
