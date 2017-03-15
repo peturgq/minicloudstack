@@ -8,9 +8,19 @@ here = path.abspath(path.dirname(__file__))
 with open(path.join(here, 'README.rst')) as f:
     long_description = f.read()
 
+requires = []
+with open(path.join(here, 'requirements.txt')) as f:
+    for l in f.readlines():
+        req = l.split('#')[0].strip()
+        if req:
+            requires.append(req)
+
+with open(path.join(here, 'VERSION')) as f:
+    version = f.read().strip()
+
 setup(
     name='minicloudstack',
-    version='1.0.5',
+    version=version,
     url='https://github.com/greenqloud/minicloudstack',
     author='Greenqloud',
     description='Minimal CloudStack Access Library and Utilities',
@@ -31,7 +41,7 @@ setup(
     ],
     packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
     include_package_data=True,
-    install_requires=['requests-toolbelt>=0.7.0'],
+    install_requires=requires,
     scripts=[],
     entry_points={'console_scripts': [
         'minicloudstack = minicloudstack.mcs:main',

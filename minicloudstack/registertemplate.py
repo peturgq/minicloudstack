@@ -25,39 +25,44 @@ from . import mcs as minicloudstack
 DEFAULT_OSTYPE = "Other Linux (64-bit)"
 
 
-def obj_if_exists(cs, type, **kwargs):
-    results = cs.map(type, **kwargs)
-    if len(results.keys()) > 1:
-        print("Warning: more than one object found in '{}".format(type))
-    elif len(results.keys()) == 1:
-        key, value = results.popitem()
-        if minicloudstack.get_verbosity():
-            print("Found existing object '{}' with id '{}'".format(type, key))
-        return value
-    else:
-        return None
-
-
 def register_template(arguments):
     cs = minicloudstack.MiniCloudStack(arguments)
 
-    zone = obj_if_exists(cs, "zones", name=arguments.zone)
+    if arguments.zone == "-1":
+        # Special case meaning "all" zones.
+        zoneid = arguments.zone
+    else:
+        zone = minicloudstack.obj_if_exists(cs, "zones", name=arguments.zone)
+        zoneid = zone.id
 
-    ostype = DEFAULT_OSTYPE
-    ostype = obj_if_exists(cs, "os types", description=ostype)
+    ostype = minicloudstack.obj_if_exists(cs, "os types", description=arguments.ostype)
+    if not ostype:
+        print("Failed to find OS Type: \"{}\"".format(arguments.ostype))
+        print("You can try any of these:")
+        descriptions = [ ostype.description for ostype in cs.map("os types").values()]
+        for desc in sorted(descriptions):
+            print("\"{}\"".format(desc))
+        exit(1)
+
     if minicloudstack.get_verbosity():
-        print("Using ostype $%s [%s]", ostype.description, ostype.id)
+        print("Using OS Type {} [{}]".format(ostype.description, ostype.id))
 
-    cs.call("register template",
-            name=arguments.name,
-            displaytext=arguments.name,
-            hypervisor=arguments.hypervisor,
-            format=arguments.format,
-            url=arguments.location,
-            isfeatured=True,
-            ispublic=True,
-            ostypeid=ostype.id,
-            zoneid=zone.id)
+    templates = cs.call(
+        "register template",
+        name=arguments.name,
+        displaytext=arguments.name,
+        hypervisor=arguments.hypervisor,
+        format=arguments.format,
+        url=arguments.location,
+        isfeatured=True,
+        ispublic=True,
+        passwordenabled=arguments.password,
+        sshkeyenabled=arguments.ssh,
+        ostypeid=ostype.id,
+        zoneid=zoneid)
+
+    # Assuming the template id to be the same across zones.  Displaying first one found.
+    print(templates["template"][0]["id"])
 
 
 def main():
@@ -73,7 +78,16 @@ def main():
                         choices=["qcow2", "raw", "vhd", "ova", "iso", "vhdx", "baremetal", "vmdk", "vdi", "tar", "dir"],
                         help="Format of template")
 
-    parser.add_argument("-z", "--zone", required=True, help="Name of zone to register too")
+    parser.add_argument("--ostype", default=DEFAULT_OSTYPE, help="OS Type (see CS documentation)")
+    parser.add_argument("-z", "--zone", default="-1", help="Name of zone to register in (skip for all zones)")
+
+    parser.add_argument("--password", dest="password", action="store_true", help="Password support")
+    parser.add_argument("--no-password", dest="password", action="store_false", help="No password support")
+    parser.set_defaults(password=False)
+
+    parser.add_argument("--ssh", dest="ssh", action="store_true", help="SSH key support")
+    parser.add_argument("--no-ssh", dest="ssh", action="store_false", help="No SSH key support")
+    parser.set_defaults(ssh=False)
 
     parser.add_argument("name", help="name of template")
 
@@ -93,7 +107,7 @@ def main():
         else:
             print(" - - - ")
             print("Error registering zone:")
-            print(e.message)
+            print(e)
             exit(1)
 
 
