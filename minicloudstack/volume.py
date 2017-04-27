@@ -59,7 +59,7 @@ def out_debug(output):
         print(output)
 
 
-def cmd_result(exitcode, status, message, device=None, volume=None):
+def cmd_result(exitcode, status, message, device=None, volume=None, volume_name=None, attached=None):
     r = {
         "status": status,
         "message": message
@@ -68,15 +68,22 @@ def cmd_result(exitcode, status, message, device=None, volume=None):
         r["device"] = device
     if volume:
         r["volume"] = volume
+    if volume_name:
+        r["volumeName"] = volume_name
+    if attached is not None:
+        if attached:
+            r["attached"] = "true"
+        else:
+            r["attached"] = "false"
     if LOG_FILE:
         print(json.dumps(r))
     return exitcode
 
 
-def cmd_success(message=None, device=None, volume=None):
+def cmd_success(message=None, device=None, volume=None, volume_name=None, attached=None):
     message = message or "Action completed successfully"
-    out_info("Success: {} ({})".format(message, device or volume or "<empty>"))
-    return cmd_result(0, "Success", message, device, volume)
+    out_info("Success: {} ({})".format(message, device or volume or volume_name or attached or "<empty>"))
+    return cmd_result(0, "Success", message, device, volume, volume_name, attached)
 
 
 def cmd_error(message):
@@ -318,7 +325,25 @@ def find_cloudstack_volume(mcs, vm_id, device_id=None, volume_id=None):
     return volume
 
 
-def cmd_is_json_options(s):
+def find_mounted_volume_vm_id(mcs, volume_id):
+    """
+    Find the vm the volume is mounted to (or None if not mounted)
+    The vm might not be running.
+    :param mcs: MiniCloudStack instance with valid connection
+    :param volume_id: id of volume
+    :return: vm_id or 'None'
+    """
+    vm_id = None
+    for v in mcs.list("volumes", id=volume_id):
+        attached_vm = getattr(v, "virtualmachineid", None)
+        if attached_vm is not None:
+            if hasattr(v, "deviceid"):
+                return attached_vm
+
+    return vm_id
+
+
+def _cmd_is_json_options(s):
     try:
         options = json.loads(s)
         return isinstance(options, dict)
@@ -326,10 +351,10 @@ def cmd_is_json_options(s):
         return False
 
 
-def cmd_parse_options(s):
+def _cmd_parse_options(s):
     fstype = "ext4"
     volumeid = None
-    if not cmd_is_json_options(s):
+    if not _cmd_is_json_options(s):
         return s, fstype
 
     options = json.loads(s)
@@ -341,13 +366,42 @@ def cmd_parse_options(s):
     return volumeid, fstype
 
 
+def _get_vm_id(args):
+    vm_id = args.vmid
+    if hasattr(args, "nodename"):
+        if args.nodename != vm_id:
+            out_warn("Different nodename [{}] than current [{}] specified".format(args.nodename, vm_id))
+            vm_id = args.nodename
+    return vm_id
+
+
 def cmd_init(mcs, args):
+    out_info("Initializing...")
     return cmd_success("Initialized")
 
 
+def cmd_getvolumename(mcs, args):
+    volume_id, _ = _cmd_parse_options(args.options)
+    out_info("Getting volume name for {}...".format(volume_id))
+    return cmd_success(volume_name=volume_id)
+
+
+def cmd_isattached(mcs, args):
+    volume_id, _ = _cmd_parse_options(args.options)
+    vm_id = _get_vm_id(args)
+    out_info("Checking if {} is attached to {}...".format(volume_id, vm_id))
+    try:
+        mounted_vm_id = find_mounted_volume_vm_id(mcs, volume_id=volume_id)
+        if mounted_vm_id and mounted_vm_id == vm_id:
+            return cmd_success("Volume is attached", attached=True)
+        return cmd_success("Volume is not attached", attached=False)
+    except minicloudstack.MiniCloudStackException as e:
+        return cmd_error("Device isattached check failed: {}".format(e))
+
+
 def cmd_create(mcs, args):
-    vm_id = args.vmid
-    if cmd_is_json_options(args.options):
+    vm_id = _get_vm_id(args)
+    if _cmd_is_json_options(args.options):
         options = json.loads(args.options)
         size = options.get("size", "1g")
     else:
@@ -361,7 +415,7 @@ def cmd_create(mcs, args):
 
 
 def cmd_delete(mcs, args):
-    volume_id, _ = cmd_parse_options(args.options)
+    volume_id, _ = _cmd_parse_options(args.options)
     out_info("Deleting volume {}...".format(volume_id))
     try:
         mcs.call("delete volume", id=volume_id)
@@ -371,10 +425,10 @@ def cmd_delete(mcs, args):
 
 
 def cmd_attach(mcs, args):
-    volume_id, _ = cmd_parse_options(args.options)
+    volume_id, _ = _cmd_parse_options(args.options)
     if not volume_id:
         return cmd_error("missing volumeID")
-    vm_id = args.vmid
+    vm_id = _get_vm_id(args)
     out_info("Attaching device for volume {} to VM {}...".format(volume_id, vm_id))
     try:
         volume = find_cloudstack_volume(mcs, vm_id, volume_id=volume_id)
@@ -393,14 +447,18 @@ def cmd_attach(mcs, args):
         return cmd_error("Device attach failed: {}".format(e))
 
 
+def cmd_waitforattach(mcs, args):
+    out_info("Waiting for attach...")
+    return cmd_attach(mcs, args)
+
+
 def cmd_detach(mcs, args):
     device = args.device
     if not is_block_device(device):
         return cmd_error("Device {} is not a block device".format(device))
     device_id = device_name_to_id(device)
-    vm_id = args.vmid
+    vm_id = _get_vm_id(args)
     out_info("Detaching device {} [{}] from VM {}...".format(device, device_id, vm_id))
-
     try:
         volume = find_cloudstack_volume(mcs, vm_id, device_id=device_id)
         if not volume:
@@ -417,7 +475,7 @@ def cmd_detach(mcs, args):
 def cmd_mount(mcs, args):
     directory = args.target
     device = args.device
-    volume_id, fs_type = cmd_parse_options(args.options)
+    volume_id, fs_type = _cmd_parse_options(args.options)
     vm_id = args.vmid
     if not volume_id:
         return cmd_error("missing volumeID")
@@ -456,9 +514,11 @@ def main():
     parser = argparse.ArgumentParser(description="CloudStack Local Volume Management")
     minicloudstack.add_arguments(parser)
 
+    current_node = platform.node()
+
     parser.add_argument("--logfile", help="Log file name")
     parser.add_argument("-z", "--zone", help="Name of zone (if not zone of current vm)")
-    parser.add_argument("-n", "--vmid", default=platform.node(),
+    parser.add_argument("-n", "--vmid", default=current_node,
                         help="Virtualmachine ID to use")
     parser.add_argument("-v", "--verbose", action="count", default=0,
                         help="Increase output verbosity")
@@ -473,25 +533,41 @@ def main():
     attach_parser.add_argument("options", help="size (in GB or options in json format)")
     attach_parser.set_defaults(func=cmd_create)
 
+    attach_parser = commands.add_parser("getvolumename", help="Get volume name")
+    attach_parser.add_argument("options", help="volumeID (or options in json format)")
+    attach_parser.set_defaults(func=cmd_getvolumename)
+
+    attach_parser = commands.add_parser("isattached", help="Check if volume is attached")
+    attach_parser.add_argument("options", help="volumeID (or options in json format)")
+    attach_parser.add_argument("nodename", default=current_node, nargs="?", help="Optional name of node")
+    attach_parser.set_defaults(func=cmd_isattached)
+
     attach_parser = commands.add_parser("delete", help="Delete volume")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
     attach_parser.set_defaults(func=cmd_delete)
 
     attach_parser = commands.add_parser("attach", help="Attach volume")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
+    attach_parser.add_argument("nodename", default=current_node, nargs="?", help="Optional name of node")
     attach_parser.set_defaults(func=cmd_attach)
+
+    attach_parser = commands.add_parser("waitforattach", help="Attach volume and wait")
+    attach_parser.add_argument("device", help="Mount device")
+    attach_parser.add_argument("options", help="volumeID (or options in json format)")
+    attach_parser.set_defaults(func=cmd_waitforattach)
 
     attach_parser = commands.add_parser("detach", help="Detach volume")
     attach_parser.add_argument("device", help="Mount device")
+    attach_parser.add_argument("nodename", default=current_node, nargs="?", help="Optional name of node")
     attach_parser.set_defaults(func=cmd_detach)
 
-    attach_parser = commands.add_parser("mount", help="Mount volume")
+    attach_parser = commands.add_parser("mount", aliases=["mountdevice"], help="Mount volume")
     attach_parser.add_argument("target", help="Target mount directory")
     attach_parser.add_argument("device", help="Mount device")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
     attach_parser.set_defaults(func=cmd_mount)
 
-    attach_parser = commands.add_parser("unmount", help="Unmount volume")
+    attach_parser = commands.add_parser("unmount", aliases=["unmountdevice"], help="Unmount volume")
     attach_parser.add_argument("volume", help="Volume to unmount")
     attach_parser.set_defaults(func=cmd_unmount)
 
@@ -507,7 +583,11 @@ def main():
         level = logging.INFO
         if args.verbose > 1:
             level = logging.DEBUG
-        logging.basicConfig(filename=args.logfile, level=level)
+        if LOG_FILE:
+            logging.basicConfig(
+                filename=args.logfile, level=level, format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+        else:
+            logging.basicConfig(level=level, format="%(message)s")
 
     try:
         mcs = minicloudstack.MiniCloudStack(args)
