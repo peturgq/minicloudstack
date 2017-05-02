@@ -24,6 +24,7 @@ import logging
 import os
 import platform
 import stat
+import sys
 import subprocess
 
 from . import mcs as minicloudstack
@@ -76,7 +77,10 @@ def cmd_result(exitcode, status, message, device=None, volume=None, volume_name=
         else:
             r["attached"] = "false"
     if LOG_FILE:
-        print(json.dumps(r))
+        if exitcode == 0:
+            print(json.dumps(r))
+        else:
+            print(json.dumps(r), file=sys.stderr)
     return exitcode
 
 
@@ -296,7 +300,11 @@ def delete(mcs, volume_id, detach=True):
     :return:
     """
     if detach:
-        mcs.call("detach volume", id=volume_id)
+        try:
+            mcs.call("detach volume", id=volume_id)
+        except minicloudstack.MiniCloudStackException:
+            pass    # Ignoring failures (race to detach)
+
     mcs.call("delete volume", id=volume_id)
 
 
@@ -382,6 +390,8 @@ def cmd_init(mcs, args):
 
 def cmd_getvolumename(mcs, args):
     volume_id, _ = _cmd_parse_options(args.options)
+    if not volume_id:
+        return cmd_error("missing volumeID")
     out_info("Getting volume name for {}...".format(volume_id))
     return cmd_success(volume_name=volume_id)
 
@@ -454,16 +464,28 @@ def cmd_waitforattach(mcs, args):
 
 def cmd_detach(mcs, args):
     device = args.device
-    if not is_block_device(device):
-        return cmd_error("Device {} is not a block device".format(device))
-    device_id = device_name_to_id(device)
     vm_id = _get_vm_id(args)
-    out_info("Detaching device {} [{}] from VM {}...".format(device, device_id, vm_id))
+    volume = None
     try:
-        volume = find_cloudstack_volume(mcs, vm_id, device_id=device_id)
-        if not volume:
-            return cmd_error("Volume not found while detaching device {} [{}] from VM {}".format(
+        # Support device being a volume-id
+        volume = find_cloudstack_volume(mcs, vm_id, volume_id=device)
+        out_info("Detaching attached volume {}...".format(device))
+    except minicloudstack.MiniCloudStackException:
+        pass
+
+    try:
+        if volume is None:
+            if not is_block_device(device):
+                return cmd_error("Device {} is not a block device".format(
+                    device))
+            device_id = device_name_to_id(device)
+            out_info("Detaching device {} [{}] from VM {}...".format(
                 device, device_id, vm_id))
+            volume = find_cloudstack_volume(mcs, vm_id, device_id=device_id)
+        if not volume:
+            return cmd_error(
+                "Volume not found while detaching device {} from VM {}".format(
+                    device, vm_id))
 
         out_info("Detaching volume [{}]".format(volume.id))
         mcs.call("detach volume", id=volume.id)
@@ -472,7 +494,7 @@ def cmd_detach(mcs, args):
         return cmd_error("Volume detach failed: {}".format(e))
 
 
-def cmd_mount(mcs, args):
+def cmd_mountdevice(mcs, args):
     directory = args.target
     device = args.device
     volume_id, fs_type = _cmd_parse_options(args.options)
@@ -484,30 +506,46 @@ def cmd_mount(mcs, args):
     if not volume:
         return cmd_error("No matching volume found while mounting")
 
-    out_info("Mounting {} to {}".format(directory, device))
-    if not format_disk_if_required(device, fs_type):
-        return cmd_error("Failed to format disk")
+    out_info("Mounting volume {} with device {} to {}".format(
+        volume_id, device, directory))
+    try:
+        mount(mcs, volume, directory, fs_type)
+        return cmd_success("Volume mounted successfully for {}".format(device))
+    except minicloudstack.MiniCloudStackException as e:
+        return cmd_error("Failed to mount device: {}".format(e))
 
-    if not os.path.exists(directory):
-        out_debug("Creating directory {}".format(directory))
-        os.makedirs(directory)
 
-    if not shell("mount {device} {directory}".format(device=device, directory=directory)):
-        return cmd_error("Failed to mount device")
+def cmd_mount(mcs, args):
+    directory = args.target
+    volume_id, fs_type = _cmd_parse_options(args.options)
+    vm_id = args.vmid
+    if not volume_id:
+        return cmd_error("missing volumeID")
 
-    return cmd_success("Volume mounted successfully for {}".format(device))
+    volume = find_cloudstack_volume(mcs, vm_id, volume_id=volume_id)
+    if not volume:
+        return cmd_error("No matching volume found while mounting")
+
+    out_info("Mounting volume {} to {}".format(volume_id, directory))
+    try:
+        mount(mcs, volume, directory, fs_type)
+        return cmd_success("Volume mounted successfully for {}".format(directory))
+    except minicloudstack.MiniCloudStackException as e:
+        return cmd_error("Failed to mount device: {}".format(e))
 
 
 def cmd_unmount(mcs, args):
-    directory = args.volume
+    target = args.target
 
-    if not shell("umount {directory}".format(directory=directory)):
-        return cmd_error("Failed to unmount directory")
+    out_info("Unmounting {}".format(target))
+    if not shell("umount {target}".format(target=target)):
+        return cmd_error("Failed to unmount")
 
-    out_info("Removing mount directory {}".format(directory))
-    os.rmdir(directory)
+    if os.path.isdir(target):
+        out_info("Removing mount directory {}".format(target))
+        os.rmdir(target)
 
-    return cmd_success("Volume unmounted successfully: {}".format(directory))
+    return cmd_success("Unmounted successfully: {}".format(target))
 
 
 def main():
@@ -561,14 +599,19 @@ def main():
     attach_parser.add_argument("nodename", default=current_node, nargs="?", help="Optional name of node")
     attach_parser.set_defaults(func=cmd_detach)
 
-    attach_parser = commands.add_parser("mount", aliases=["mountdevice"], help="Mount volume")
+    attach_parser = commands.add_parser("mountdevice", help="Mount device")
     attach_parser.add_argument("target", help="Target mount directory")
     attach_parser.add_argument("device", help="Mount device")
     attach_parser.add_argument("options", help="volumeID (or options in json format)")
+    attach_parser.set_defaults(func=cmd_mountdevice)
+
+    attach_parser = commands.add_parser("mount", help="Mount volume")
+    attach_parser.add_argument("target", help="Target mount directory")
+    attach_parser.add_argument("options", help="volumeID (or options in json format)")
     attach_parser.set_defaults(func=cmd_mount)
 
-    attach_parser = commands.add_parser("unmount", aliases=["unmountdevice"], help="Unmount volume")
-    attach_parser.add_argument("volume", help="Volume to unmount")
+    attach_parser = commands.add_parser("unmount", aliases=["unmountdevice"], help="Unmount")
+    attach_parser.add_argument("target", help="Volume/device to unmount")
     attach_parser.set_defaults(func=cmd_unmount)
 
     args = parser.parse_args()
