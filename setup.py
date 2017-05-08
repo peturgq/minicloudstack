@@ -3,19 +3,23 @@ from setuptools import find_packages, setup
 from os import path
 
 EXCLUDE_FROM_PACKAGES = []
+README = 'README.rst'
+REQUIREMENTS = 'requirements.txt'
+VERSION = 'VERSION'
+PACKAGE_DATA = [README, REQUIREMENTS, VERSION]
 
 here = path.abspath(path.dirname(__file__))
-with open(path.join(here, 'README.rst')) as f:
+with open(path.join(here, README)) as f:
     long_description = f.read()
 
 requires = []
-with open(path.join(here, 'requirements.txt')) as f:
+with open(path.join(here, REQUIREMENTS)) as f:
     for l in f.readlines():
         req = l.split('#')[0].strip()
         if req:
             requires.append(req)
 
-with open(path.join(here, 'VERSION')) as f:
+with open(path.join(here, VERSION)) as f:
     version = f.read().strip()
 
 setup(
@@ -40,6 +44,7 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     packages=find_packages(exclude=EXCLUDE_FROM_PACKAGES),
+    package_data={'': PACKAGE_DATA},
     include_package_data=True,
     install_requires=requires,
     scripts=[],
