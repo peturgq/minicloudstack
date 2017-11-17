@@ -105,7 +105,7 @@ def add_traffictype(cs, pnid, attrs, update):
     cs.obj("add traffic type", physicalnetworkid=pnid, **attrs)
 
 
-def create_traffictype(traffictype, hypervisor, vlan=None):
+def create_traffictype(traffictype, hypervisor, vlan=None, nested=False):
     if hypervisor == "vmware":
         if vlan:
             label = "vSwitch0,{}".format(vlan)
@@ -121,6 +121,17 @@ def create_traffictype(traffictype, hypervisor, vlan=None):
             "hypervnetworklabel": label,
             "traffictype": traffictype,
         }
+    elif hypervisor == "kvm" and nested:
+        if traffictype == "Public":
+            label = "internet0"
+        elif traffictype == "Guest":
+            label = "isolation0"
+        else:
+            label = "cloudbr0"
+        return {
+                "kvmnetworklabel": label,
+                "traffictype": traffictype
+            }
     else:
         return {
             "kvmnetworklabel": "cloudbr0",
@@ -128,7 +139,7 @@ def create_traffictype(traffictype, hypervisor, vlan=None):
         }
 
 
-def create_physicalnetwork(cs, zone, pn, name, hyperv, adv_netw, enable_public, enable_non_public, mgmt_vlan, public_vlan, guest_vlan, update):
+def create_physicalnetwork(cs, zone, pn, name, hyperv, adv_netw, enable_public, enable_non_public, mgmt_vlan, public_vlan, guest_vlan, update, nested=False):
     if not pn:
         additional = {}
         if adv_netw and guest_vlan:
@@ -154,11 +165,11 @@ def create_physicalnetwork(cs, zone, pn, name, hyperv, adv_netw, enable_public, 
     add_virtual_router = True
 
     if enable_public:
-        add_traffictype(cs, pn.id, create_traffictype("Public", hyperv, vlan=public_vlan), update)
+        add_traffictype(cs, pn.id, create_traffictype("Public", hyperv, vlan=public_vlan, nested=nested), update)
 
     if enable_non_public:
-        add_traffictype(cs, pn.id, create_traffictype("Management", hyperv, vlan=mgmt_vlan), update)
-        add_traffictype(cs, pn.id, create_traffictype("Storage", hyperv, vlan=mgmt_vlan), update)
+        add_traffictype(cs, pn.id, create_traffictype("Management", hyperv, vlan=mgmt_vlan, nested=nested), update)
+        add_traffictype(cs, pn.id, create_traffictype("Storage", hyperv, vlan=mgmt_vlan, nested=nested), update)
         add_traffictype(cs, pn.id, create_traffictype("Guest", hyperv), update)
 
         if adv_netw:
@@ -186,7 +197,7 @@ def create_physicalnetwork(cs, zone, pn, name, hyperv, adv_netw, enable_public, 
     return pn
 
 
-def create_physicalnetworks(cs, zone, hyperv, adv_netw, mgmt_vlan, public_vlan, guest_vlan, update):
+def create_physicalnetworks(cs, zone, hyperv, adv_netw, mgmt_vlan, public_vlan, guest_vlan, update, nested=False):
     pns = cs.map("physical networks", zoneid=zone.id)
     pn1 = pn2 = None
     if len(pns.keys()) and update:
@@ -210,13 +221,13 @@ def create_physicalnetworks(cs, zone, hyperv, adv_netw, mgmt_vlan, public_vlan, 
 
     if adv_netw and hyperv == "kvm":
         pu = create_physicalnetwork(cs, zone, pn1, zone.name + "-public", hyperv, adv_netw,
-                                    True, False, "", "", "", update)
+                                    True, False, "", "", "", update, nested)
 
         pr = create_physicalnetwork(cs, zone, pn2, zone.name + "-guest", hyperv, adv_netw,
-                                    False, True, mgmt_vlan, public_vlan, guest_vlan, update)
+                                    False, True, mgmt_vlan, public_vlan, guest_vlan, update, nested)
     else:
         pu = create_physicalnetwork(cs, zone, pn1, zone.name + "-physical", hyperv, adv_netw,
-                                    True, True, mgmt_vlan, public_vlan, guest_vlan, update)
+                                    True, True, mgmt_vlan, public_vlan, guest_vlan, update, nested)
         pr = None
 
     return pu, pr
@@ -475,7 +486,7 @@ def create_all(arguments):
 
     zone = create_zone(cs, arguments.name, mgmtdns, pubdns, adv_netw, guestcidr, hypervisor, arguments.update, localstorage)
 
-    pn_pu, pn_pr = create_physicalnetworks(cs, zone, hypervisor, adv_netw, arguments.mgmtvlan, arguments.pubvlan, arguments.guestvlan, arguments.update)
+    pn_pu, pn_pr = create_physicalnetworks(cs, zone, hypervisor, adv_netw, arguments.mgmtvlan, arguments.pubvlan, arguments.guestvlan, arguments.update, arguments.nested)
 
     podname = arguments.name + "-pod1"   # Assume no-one cares about pod name.
     pod = addhost.create_pod(cs, zone, podname, mgmtgateway, mgmtnet, mgmt_startip, mgmt_endip, arguments.update)
@@ -568,7 +579,7 @@ def main():
 
     parser.add_argument("-hy", "--hypervisor", required=True, default="kvm",
                         choices=["kvm", "vmware", "hyperv", "baremetal"], help="Type of hypervisor cluster to add")
-
+    parser.add_argument("-ne", "--nested", required=False, default=False, action='store_true')
     parser.add_argument("-dc", "--datacenter", default="", help="vmware datacenter")
     parser.add_argument("-cl", "--cluster", default="", help="vmware cluster")
 
