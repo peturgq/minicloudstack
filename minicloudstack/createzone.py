@@ -170,7 +170,7 @@ def create_physicalnetwork(cs, zone, pn, name, hyperv, adv_netw, enable_public, 
     if enable_non_public:
         add_traffictype(cs, pn.id, create_traffictype("Management", hyperv, vlan=mgmt_vlan, nested=nested), update)
         add_traffictype(cs, pn.id, create_traffictype("Storage", hyperv, vlan=mgmt_vlan, nested=nested), update)
-        add_traffictype(cs, pn.id, create_traffictype("Guest", hyperv), update)
+        add_traffictype(cs, pn.id, create_traffictype("Guest", hyperv, nested=nested), update)
 
         if adv_netw:
             cs_major, cs_minor = cs.version()
